@@ -60,6 +60,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                             workArea: c.RadioButton({
                                 text: 'Work area'
                             }),
+                            cameraDuration: c.RadioButton({
+                                text: 'Camera layer duration'
+                            }),
                             // TODO: automatically detect per camera and channel whether to animate and when
                             /*automatic: c.RadioButton({
                                 text: 'Automatic'
@@ -96,6 +99,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             timeRange: {
                 wholeComp: window.settings.timeRange.value.wholeComp,
                 workArea: window.settings.timeRange.value.workArea,
+                cameraDuration: window.settings.timeRange.value.cameraDuration,
                 // automatic: window.settings.timeRange.value.automatic
             },
             centeredCamera: window.settings.centeredCamera,
@@ -197,12 +201,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         var activeComp = app.project.activeItem;
 
         var selection = activeComp.selectedLayers;
-        var selectedCameras = [];
-        for (var i = 0; i < selection.length; i++) {
-            if (selection[i] instanceof CameraLayer) {
-                selectedCameras.push(selection[i]);
-            }
-        }
 
         var json = {
             cameras: [],
@@ -210,23 +208,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             frameRate: activeComp.frameRate,
             version: fileVersion
         };
-
-        // avoid floating point weirdness by rounding, just in case
-        var startFrame = Math.round(settings.timeRange === 'workArea' ? activeComp.workAreaStart * activeComp.frameRate : 0);
-        var numFrames = Math.round((settings.timeRange === 'workArea' ? activeComp.workAreaDuration : activeComp.duration) * activeComp.frameRate);
-
-        for (var i = 0; i < selectedCameras.length; i++) {
-            var camera = selectedCameras[i];
-
-            var cameraJson = {
-                name: camera.name,
-                position: {startFrame: startFrame, keyframes: []},
-                rotation: {startFrame: startFrame, keyframes: []},
-                _original: camera
-            };
-
-            json.cameras.push(cameraJson);
-        }
 
         function zoomToAngle(zoom) {
             return Math.atan((activeComp.width/zoom)/2)*(360/Math.PI);
@@ -236,8 +217,37 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         try {
             evaluator.threeDLayer = true;
 
-            for (var j = 0; j < json.cameras.length; j++) {
-                var camera = json.cameras[j];
+            for (var j = 0; j < selection.length; j++) {
+                if (!(selection[j] instanceof CameraLayer)) continue;
+                var AECamera = selection[j];
+
+                // avoid floating point weirdness by rounding, just in case
+                var startTime, duration;
+                switch (settings.timeRange) {
+                    case 'workArea':
+                        startTime = activeComp.workAreaStart;
+                        duration = activeComp.workAreaDuration;
+                        break;
+                    case 'cameraDuration':
+                        startTime = AECamera.inPoint;
+                        duration = AECamera.outPoint - AECamera.inPoint;
+                        break;
+                    case 'wholeComp':
+                    default:
+                        startTime = 0;
+                        duration = activeComp.duration;
+                        break;
+                }
+                var startFrame = Math.round(startTime * activeComp.frameRate);
+                var endFrame = startFrame + Math.round(duration * activeComp.frameRate);
+
+                var camera = {
+                    name: AECamera.name,
+                    position: {startFrame: startFrame, keyframes: []},
+                    rotation: {startFrame: startFrame, keyframes: []}
+                };
+
+                json.cameras.push(camera);
 
                 evaluator.transform.position.expression = "thisComp.layer(\"" + camera.name + "\").toWorld([0, 0, 0])";
                 evaluator.transform.orientation.expression = "var C = thisComp.layer(\"" + camera.name + "\");\
@@ -256,10 +266,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                     }\
                     [radiansToDegrees(a),radiansToDegrees(b),radiansToDegrees(c)]";
 
-                var fovVaries = camera._original.zoom.isTimeVarying;
-                camera.fov = fovVaries ? {startFrame: startFrame, keyframes: []} : zoomToAngle(camera._original.zoom.value)
+                var fovVaries = AECamera.zoom.isTimeVarying;
+                camera.fov = fovVaries ? {startFrame: startFrame, keyframes: []} : zoomToAngle(AECamera.zoom.value)
 
-                for (var i = startFrame; i < startFrame + numFrames; i++) {
+                for (var i = startFrame; i < endFrame; i++) {
                     var time =  i / activeComp.frameRate;
                     var posVal = evaluator.transform.position.valueAtTime(time, false);
                     if (settings.centeredCamera) {
@@ -268,10 +278,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                     }
                     camera.position.keyframes.push(posVal);
                     camera.rotation.keyframes.push(evaluator.transform.orientation.valueAtTime(time, false));
-                    if (fovVaries) camera.fov.keyframes.push(zoomToAngle(camera._original.zoom.valueAtTime(time, false)));
+                    if (fovVaries) camera.fov.keyframes.push(zoomToAngle(AECamera.zoom.valueAtTime(time, false)));
                 }
-
-                delete camera._original;
             }
         } finally {
             evaluator.remove();

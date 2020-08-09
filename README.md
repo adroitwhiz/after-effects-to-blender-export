@@ -34,7 +34,9 @@ The settings are as follows:
 Choose the destination of the exported camera data file. This file can then be imported into Blender.
 
 #### Time range
-If set to "Whole comp", then keyframes will be generated for the entire duration of the composition. If set to "Work area", keyframes will only be generated within the composition's work area, which is faster.
+- "Whole comp": keyframes will be generated for the entire duration of the composition.
+- "Work area": keyframes will only be generated within the composition's work area.
+- "Camera layer duration": keyframes will only be generated within the duration(s) of the exported camera layer(s).
 
 #### Comp camera is centered
 
