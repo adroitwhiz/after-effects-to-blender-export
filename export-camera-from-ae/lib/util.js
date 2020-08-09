@@ -1,9 +1,7 @@
 // A collection of helpful utility functions, (mostly) shamelessly stolen from Rhubarb Lip Sync
 // https://github.com/DanielSWolf/rhubarb-lip-sync
-
+// Their license is as follows:
 /*
-Rhubarb Lip Sync is released under the MIT License (MIT).
-
 Copyright (c) 2015-2016 Daniel Wolf
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of

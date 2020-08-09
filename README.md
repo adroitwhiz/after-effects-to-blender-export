@@ -4,7 +4,7 @@ This repo includes a script for After Effects, and add-on for Blender, that allo
 
 ## Installation / Usage (After Effects)
 
-To install the After Effects script, first download it and then select it via File > Scripts > Install Script File...:
+To install the After Effects script, first [download it](https://github.com/adroitwhiz/ae-blender-camera-export/raw/master/Export%20Camera%20Data%20to%20JSON.jsx) and then select it via File > Scripts > Install Script File...:
 
 ![AE step 1](docs/ae-step1.png)
 
@@ -44,7 +44,7 @@ If checked, the exporter will treat the center of the After Effects composition 
 
 ## Installation / Usage (Blender)
 
-To install the Blender add-on, download, install, and then enable it via the add-on preferences:
+To install the Blender add-on, [download](https://github.com/adroitwhiz/ae-blender-camera-export/raw/master/import-camera-to-blender.py), install, and then enable it via the add-on preferences:
 
 ![Blender step 1](docs/blender-step1.png)
 
