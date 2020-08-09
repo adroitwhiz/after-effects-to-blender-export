@@ -24,6 +24,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 {
     // @include 'lib/util.js'
 
+    var fileVersion = 1;
     var settingsVersion = '0.1';
     var settingsFilePath = Folder.userData.fullName + '/cam-export-settings.json';
 
@@ -206,7 +207,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         var json = {
             cameras: [],
             compSize: [activeComp.width, activeComp.height],
-            frameRate: activeComp.frameRate
+            frameRate: activeComp.frameRate,
+            version: fileVersion
         };
 
         // avoid floating point weirdness by rounding, just in case

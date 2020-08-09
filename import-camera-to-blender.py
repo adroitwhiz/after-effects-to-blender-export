@@ -8,7 +8,7 @@ bl_info = {
     "name": "Import AE Camera Keyframe Data",
     "description": "Import After Effects camera keyframe data into Blender",
     "author": "adroitwhiz",
-    "version": (0, 1),
+    "version": (0, 2),
     "blender": (2, 80, 0),
     "category": "Import-Export"
 }
@@ -26,6 +26,11 @@ class ImportAECameraData(bpy.types.Operator, ImportHelper):
     def execute(self, context):
         with open(self.filepath) as f:
             data = json.load(f)
+
+            if data.get('version', 0) > 1:
+                self.report({'WARNING'}, 'This file is too new. Update this add-on.')
+                return {'CANCELLED'}
+
             for camdata in data['cameras']:
                 cam = bpy.data.cameras.new(camdata['name'])
                 camobj = bpy.data.objects.new(camdata['name'], cam)
