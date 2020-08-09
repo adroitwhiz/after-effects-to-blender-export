@@ -57,7 +57,7 @@ Array.prototype.some||(Array.prototype.some=function(r){"use strict";if(null==th
 // Polyfill for String.prototype.trim
 String.prototype.trim||(String.prototype.trim=function(){return this.replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g,"")});
 
-// @include "lib/json2.js"
+// @include "json2.js"
 
 // Object containing functions to create control description trees.
 // For instance, `controls.StaticText({ text: 'Hello world' })`
