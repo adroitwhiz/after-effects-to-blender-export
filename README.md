@@ -40,7 +40,7 @@ Choose the destination of the exported camera data file. This file can then be i
 
 #### Comp camera is centered
 
-If checked, the exporter will treat the center of the After Effects composition (half its width and heigh) as the 3D origin. This matches the Cineware option for using a centered comp camera, and if you select that option, you should check this box:
+If checked, the exporter will treat the center of the After Effects composition (half its width and height) as the 3D origin. This matches the Cineware option for using a centered comp camera, and if you select that option, you should check this box:
 
 ![Centered comp camera option](docs/ae-centered-comp-camera.png)
 
