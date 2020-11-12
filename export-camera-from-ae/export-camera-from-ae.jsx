@@ -213,7 +213,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             return Math.atan((activeComp.width/zoom)/2)*(360/Math.PI);
         }
 
+        // `toWorld` only works inside expressions, so add a null object whose expression we will set and then evaluate
+        // using `valueAtTime`.
         var evaluator = activeComp.layers.addNull();
+        // Move the evaluator layer to the bottom to avoid messing up expressions which rely on layer indices
+        evaluator.moveToEnd();
         try {
             evaluator.threeDLayer = true;
 
