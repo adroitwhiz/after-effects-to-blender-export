@@ -28,11 +28,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
     var settingsVersion = '0.1';
     var settingsFilePath = Folder.userData.fullName + '/cam-export-settings.json';
 
-    function showDialog(cb) {
+    function showDialog(cb, opts) {
+        // helpTip doesn't work on groups so I need to apply the same helpTip string to both the controls themselves
+        // and their labels :(
+        var centeredCameraHelpTip = "Has the same effect as \"Centered Comp Camera\" in the Cinema 4D plugin";
+
         var c = controlFunctions;
         var resourceString = createResourceString(
             c.Dialog({
-                text: 'AE Camera Export',
+                text: 'AE to Blender Export',
                 settings: c.Group({
                     orientation: 'column',
                     alignment: ['fill', 'fill'],
@@ -60,19 +64,32 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                             workArea: c.RadioButton({
                                 text: 'Work area'
                             }),
-                            cameraDuration: c.RadioButton({
-                                text: 'Camera layer duration'
+                            layerDuration: c.RadioButton({
+                                text: 'Layer duration'
                             }),
-                            // TODO: automatically detect per camera and channel whether to animate and when
+                            // TODO: automatically detect per layer and channel whether to animate and when
                             /*automatic: c.RadioButton({
                                 text: 'Automatic'
                             })*/
                         })
                     }),
-                    centeredCamera: c.Group({
-                        label: c.StaticText({text: 'Comp camera is centered'}),
+                    selectedLayersOnly: c.Group({
+                        label: c.StaticText({
+                            text: 'Export selected layers only'
+                        }),
                         value: c.Checkbox({
-                            value: false
+                            value: opts.selectionExists,
+                            enabled: opts.selectionExists
+                        })
+                    }),
+                    centeredCamera: c.Group({
+                        label: c.StaticText({
+                            text: 'Comp camera is centered',
+                            helpTip: centeredCameraHelpTip
+                        }),
+                        value: c.Checkbox({
+                            value: false,
+                            helpTip: centeredCameraHelpTip
                         })
                     })
                 }),
@@ -91,7 +108,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             })
         );
 
-        var window = new Window(resourceString, 'Camera Export', undefined, {resizeable: false});
+        var window = new Window(resourceString, 'Blender Export', undefined, {resizeable: false});
 
         var controls = {
             savePath: window.settings.saveDestination.savePath,
@@ -99,10 +116,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             timeRange: {
                 wholeComp: window.settings.timeRange.value.wholeComp,
                 workArea: window.settings.timeRange.value.workArea,
-                cameraDuration: window.settings.timeRange.value.cameraDuration,
+                layerDuration: window.settings.timeRange.value.layerDuration,
                 // automatic: window.settings.timeRange.value.automatic
             },
             centeredCamera: window.settings.centeredCamera,
+            selectedLayersOnly: window.settings.selectedLayersOnly,
             exportButton: window.buttons.doExport,
             cancelButton: window.buttons.cancel
         };
@@ -149,6 +167,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 savePath: controls.savePath.text,
                 timeRange: timeRange,
                 centeredCamera: controls.centeredCamera.value.value,
+                selectedLayersOnly: controls.selectedLayersOnly.value.value
             };
         }
 
@@ -163,7 +182,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         }
 
         controls.saveBrowse.onClick = function() {
-            var savePath = File.saveDialog('Choose the path and name for the camera data file', 'Camera data:*.json').fsName;
+            var savePath = File.saveDialog('Choose the path and name for the layer data file', 'Layer data:*.json').fsName;
             controls.savePath.text = savePath;
         }
 
@@ -196,14 +215,52 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         return activeViewer;
     }
 
-    function main(settings) {
+    function main() {
         getCompositionViewer().setActive();
         var activeComp = app.project.activeItem;
 
-        var selection = activeComp.selectedLayers;
+        var validLayers = [];
+        for (var i = 1; i <= activeComp.layers.length; i++) {
+            if (activeComp.layers[i] instanceof CameraLayer) {
+                validLayers.push(activeComp.layers[i]);
+            }
+        }
+
+        var d = showDialog(
+            function(settings) {
+                runExport(settings, {
+                    validLayers: validLayers,
+                    activeComp: activeComp
+                })
+            },
+            {
+                selectionExists: activeComp.selectedLayers.length > 0
+            }
+        );
+        d.window.show();
+    }
+
+    function runExport(settings, opts) {
+        var validLayers = opts.validLayers;
+        var activeComp = opts.activeComp;
+        var layersToExport;
+        if (settings.selectedLayersOnly) {
+            layersToExport = [];
+            for (var i = 0; i < activeComp.selectedLayers.length; i++) {
+                // For some reason validLayers.includes doesn't work here
+                for (var j = 0; j < validLayers.length; j++) {
+                    if (validLayers[i] === activeComp.selectedLayers[i]) {
+                        layersToExport.push(activeComp.selectedLayers[i]);
+                        break;
+                    }
+                }
+            }
+        } else {
+            layersToExport = validLayers;
+        }
 
         var json = {
-            cameras: [],
+            layers: [],
             compSize: [activeComp.width, activeComp.height],
             frameRate: activeComp.frameRate,
             version: fileVersion
@@ -221,9 +278,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         try {
             evaluator.threeDLayer = true;
 
-            for (var j = 0; j < selection.length; j++) {
-                if (!(selection[j] instanceof CameraLayer)) continue;
-                var AECamera = selection[j];
+            for (var j = 0; j < layersToExport.length; j++) {
+                var AELayer = layersToExport[j];
 
                 // avoid floating point weirdness by rounding, just in case
                 var startTime, duration;
@@ -232,9 +288,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                         startTime = activeComp.workAreaStart;
                         duration = activeComp.workAreaDuration;
                         break;
-                    case 'cameraDuration':
-                        startTime = AECamera.inPoint;
-                        duration = AECamera.outPoint - AECamera.inPoint;
+                    case 'layerDuration':
+                        startTime = AELayer.inPoint;
+                        duration = AELayer.outPoint - AELayer.inPoint;
                         break;
                     case 'wholeComp':
                     default:
@@ -245,16 +301,16 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 var startFrame = Math.round(startTime * activeComp.frameRate);
                 var endFrame = startFrame + Math.round(duration * activeComp.frameRate);
 
-                var camera = {
-                    name: AECamera.name,
+                var exportedObject = {
+                    name: AELayer.name,
                     position: {startFrame: startFrame, keyframes: []},
                     rotation: {startFrame: startFrame, keyframes: []}
                 };
 
-                json.cameras.push(camera);
+                json.layers.push(exportedObject);
 
-                evaluator.transform.position.expression = "thisComp.layer(\"" + camera.name + "\").toWorld([0, 0, 0])";
-                evaluator.transform.orientation.expression = "var C = thisComp.layer(\"" + camera.name + "\");\
+                evaluator.transform.position.expression = "thisComp.layer(\"" + exportedObject.name + "\").toWorld([0, 0, 0])";
+                evaluator.transform.orientation.expression = "var C = thisComp.layer(\"" + exportedObject.name + "\");\
                     u = normalize(C.toWorldVec([1,0,0]));\
                     v = normalize(C.toWorldVec([0,1,0]));\
                     w = normalize(C.toWorldVec([0,0,1]));\
@@ -270,8 +326,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                     }\
                     [radiansToDegrees(a),radiansToDegrees(b),radiansToDegrees(c)]";
 
-                var fovVaries = AECamera.zoom.isTimeVarying;
-                camera.fov = fovVaries ? {startFrame: startFrame, keyframes: []} : zoomToAngle(AECamera.zoom.value)
+                var fovVaries = AELayer.zoom.isTimeVarying;
+                exportedObject.fov = fovVaries ? {startFrame: startFrame, keyframes: []} : zoomToAngle(AELayer.zoom.value)
 
                 for (var i = startFrame; i < endFrame; i++) {
                     var time =  i / activeComp.frameRate;
@@ -280,9 +336,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                         posVal[0] -= activeComp.width / 2;
                         posVal[1] -= activeComp.height / 2;
                     }
-                    camera.position.keyframes.push(posVal);
-                    camera.rotation.keyframes.push(evaluator.transform.orientation.valueAtTime(time, false));
-                    if (fovVaries) camera.fov.keyframes.push(zoomToAngle(AECamera.zoom.valueAtTime(time, false)));
+                    exportedObject.position.keyframes.push(posVal);
+                    exportedObject.rotation.keyframes.push(evaluator.transform.orientation.valueAtTime(time, false));
+                    if (fovVaries) exportedObject.fov.keyframes.push(zoomToAngle(AELayer.zoom.valueAtTime(time, false)));
                 }
             }
         } finally {
@@ -297,8 +353,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         // If we can't get the composition viewer, fail early rather than baiting the user into filling out all the
         // settings in the dialog just for it to fail when they click Export
         getCompositionViewer();
-        var d = showDialog(main);
-        d.window.show();
+        main();
     } catch (err) {
         alert(err);
     }
