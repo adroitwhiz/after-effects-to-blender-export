@@ -24,8 +24,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 {
     // @include 'lib/util.js'
 
-    var fileVersion = 1;
-    var settingsVersion = '0.1';
+    var fileVersion = 2;
+    var settingsVersion = '0.2';
     var settingsFilePath = Folder.userData.fullName + '/cam-export-settings.json';
 
     function showDialog(cb, opts) {
@@ -221,7 +221,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
         var validLayers = [];
         for (var i = 1; i <= activeComp.layers.length; i++) {
-            if (activeComp.layers[i] instanceof CameraLayer) {
+            var layer = activeComp.layers[i];
+            if (
+                layer instanceof CameraLayer ||
+                (
+                    layer instanceof AVLayer &&
+                    layer.threeDLayer &&
+                    layer.source
+                )
+            ) {
                 validLayers.push(activeComp.layers[i]);
             }
         }
@@ -238,6 +246,16 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             }
         );
         d.window.show();
+    }
+
+    function KeyframableProperty(isKeyframed) {
+        if (isKeyframed) {
+            this.startFrame = 0;
+            this.keyframes = [];
+        } else {
+            this.value = null;
+        }
+        this.isKeyframed = isKeyframed;
     }
 
     function runExport(settings, opts) {
@@ -261,88 +279,184 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
         var json = {
             layers: [],
+            sources: [],
             compSize: [activeComp.width, activeComp.height],
             frameRate: activeComp.frameRate,
             version: fileVersion
         };
 
+        var exportedSources = [];
+
         function zoomToAngle(zoom) {
             return Math.atan((activeComp.width/zoom)/2)*(360/Math.PI);
         }
 
-        // `toWorld` only works inside expressions, so add a null object whose expression we will set and then evaluate
-        // using `valueAtTime`.
-        var evaluator = activeComp.layers.addNull();
-        // Move the evaluator layer to the bottom to avoid messing up expressions which rely on layer indices
-        evaluator.moveToEnd();
-        try {
-            evaluator.threeDLayer = true;
+        for (var i = 0; i < layersToExport.length; i++) {
+            var AELayer = layersToExport[i];
+            json.layers.push(exportLayer(AELayer));
+        }
 
-            for (var j = 0; j < layersToExport.length; j++) {
-                var AELayer = layersToExport[j];
-
-                // avoid floating point weirdness by rounding, just in case
-                var startTime, duration;
-                switch (settings.timeRange) {
-                    case 'workArea':
-                        startTime = activeComp.workAreaStart;
-                        duration = activeComp.workAreaDuration;
-                        break;
-                    case 'layerDuration':
-                        startTime = AELayer.inPoint;
-                        duration = AELayer.outPoint - AELayer.inPoint;
-                        break;
-                    case 'wholeComp':
-                    default:
-                        startTime = 0;
-                        duration = activeComp.duration;
-                        break;
-                }
-                var startFrame = Math.round(startTime * activeComp.frameRate);
-                var endFrame = startFrame + Math.round(duration * activeComp.frameRate);
-
-                var exportedObject = {
-                    name: AELayer.name,
-                    position: {startFrame: startFrame, keyframes: []},
-                    rotation: {startFrame: startFrame, keyframes: []}
-                };
-
-                json.layers.push(exportedObject);
-
-                evaluator.transform.position.expression = "thisComp.layer(\"" + exportedObject.name + "\").toWorld([0, 0, 0])";
-                evaluator.transform.orientation.expression = "var C = thisComp.layer(\"" + exportedObject.name + "\");\
-                    u = normalize(C.toWorldVec([1,0,0]));\
-                    v = normalize(C.toWorldVec([0,1,0]));\
-                    w = normalize(C.toWorldVec([0,0,1]));\
-                    sinb = clamp(w[0],-1,1);\
-                    b = Math.asin(sinb);\
-                    cosb = Math.cos(b);\
-                    if (Math.abs(cosb) > .0005){\
-                    c = -Math.atan2(v[0],u[0]);\
-                    a = -Math.atan2(w[1],w[2]);\
-                    }else{\
-                    a = Math.atan2(u[1],v[1]);\
-                    c = 0;\
-                    }\
-                    [radiansToDegrees(a),radiansToDegrees(b),radiansToDegrees(c)]";
-
-                var fovVaries = AELayer.zoom.isTimeVarying;
-                exportedObject.fov = fovVaries ? {startFrame: startFrame, keyframes: []} : zoomToAngle(AELayer.zoom.value)
-
-                for (var i = startFrame; i < endFrame; i++) {
-                    var time =  i / activeComp.frameRate;
-                    var posVal = evaluator.transform.position.valueAtTime(time, false);
-                    if (settings.centeredCamera) {
-                        posVal[0] -= activeComp.width / 2;
-                        posVal[1] -= activeComp.height / 2;
-                    }
-                    exportedObject.position.keyframes.push(posVal);
-                    exportedObject.rotation.keyframes.push(evaluator.transform.orientation.valueAtTime(time, false));
-                    if (fovVaries) exportedObject.fov.keyframes.push(zoomToAngle(AELayer.zoom.valueAtTime(time, false)));
-                }
+        function unenum(val) {
+            switch (val) {
+                case KeyframeInterpolationType.LINEAR: return 'linear';
+                case KeyframeInterpolationType.BEZIER: return 'bezier';
+                case KeyframeInterpolationType.HOLD: return 'hold';
             }
-        } finally {
-            evaluator.remove();
+
+            throw new Error('Could not un-enum ' + val);
+        }
+
+        function exportProperty(prop, layer, fn) {
+            var exportedProp = {isKeyframed: prop.isTimeVarying};
+            if (prop.isTimeVarying) {
+                exportedProp.keyframes = [];
+                var valType = prop.propertyValueType;
+                if (
+                    (!prop.expressionEnabled) &&
+                    (!fn) &&
+                    (valType === PropertyValueType.ThreeD ||
+                    valType === PropertyValueType.TwoD ||
+                    valType === PropertyValueType.OneD)
+                ) {
+                    exportedProp.keyframesFormat = 'bezier';
+                    var numDimensions = valType === PropertyValueType.ThreeD ? 3 :
+                        valType === PropertyValueType.TwoD ? 2 :
+                            1;
+                    for (var keyIndex = 1; keyIndex <= prop.numKeys; keyIndex++) {
+                        var time = prop.keyTime(keyIndex);
+                        var value = prop.keyValue(keyIndex);
+                        var easeIn = prop.keyInTemporalEase(keyIndex);
+                        var easeOut = prop.keyOutTemporalEase(keyIndex);
+                        var interpolationIn = unenum(prop.keyInInterpolationType(keyIndex));
+                        var interpolationOut = unenum(prop.keyOutInterpolationType(keyIndex));
+                        var vals = [];
+                        for (var i = 0; i < numDimensions; i++) {
+                            vals.push({
+                                value: Array.isArray(value) ? value[i] : value,
+                                easeIn: {
+                                    speed: easeIn[i].speed,
+                                    influence: easeIn[i].influence
+                                },
+                                easeOut: {
+                                    speed: easeOut[i].speed,
+                                    influence: easeOut[i].influence
+                                }
+                            })
+                        }
+                        exportedProp.keyframes.push({
+                            time: prop.keyTime(keyIndex),
+                            value: vals,
+                            interpolationIn: interpolationIn,
+                            interpolationOut: interpolationOut
+                        });
+                    }
+                } else {
+                    exportedProp.keyframesFormat = 'calculated';
+                    // avoid floating point weirdness by rounding, just in case
+                    var startTime, duration;
+                    switch (settings.timeRange) {
+                        case 'workArea':
+                            startTime = activeComp.workAreaStart;
+                            duration = activeComp.workAreaDuration;
+                            break;
+                        case 'layerDuration':
+                            startTime = layer.inPoint;
+                            duration = layer.outPoint - layer.inPoint;
+                            break;
+                        case 'wholeComp':
+                        default:
+                            startTime = 0;
+                            duration = activeComp.duration;
+                            break;
+                    }
+                    var startFrame = Math.round(startTime * activeComp.frameRate);
+                    var endFrame = startFrame + Math.round(duration * activeComp.frameRate);
+
+                    for (var i = startFrame; i < endFrame; i++) {
+                        var time =  i / activeComp.frameRate;
+                        var propVal = prop.valueAtTime(time, false /* preExpression */);
+                        if (fn) propVal = fn(propVal);
+                        exportedProp.keyframes.push(propVal);
+                    }
+                }
+            } else {
+                exportedProp.value = fn ? fn(prop.value) : prop.value;
+            }
+
+            return exportedProp;
+        }
+
+        function exportSource(source) {
+            var exportedSource = {
+                height: source.height,
+                width: source.width,
+                name: source.name
+            };
+            if (source instanceof FootageItem) {
+                if (source.mainSource instanceof SolidSource) {
+                    exportedSource.type = 'solid';
+                    exportedSource.color = source.mainSource.color;
+                } else if (source.mainSource instanceof FileSource) {
+                    exportedSource.type = 'file';
+                    exportedSource.file = source.mainSource.file.absoluteURI;
+                } else {
+                    exportedSource.type = 'unknown';
+                }
+            } else {
+                exportedSource.type = 'unknown';
+            }
+            return exportedSource;
+        }
+
+        function exportLayer (layer) {
+            var layerType;
+            if (layer instanceof CameraLayer) {
+                layerType = 'camera';
+            } else if (layer instanceof AVLayer) {
+                layerType = 'av';
+            } else {
+                throw new Error('Unsupported layer type on ' + layer.name);
+            }
+
+            var exportedObject = {
+                name: layer.name,
+                type: layerType,
+                index: layer.index,
+                parentIndex: layer.parent ? layer.parent.index : null,
+                position: exportProperty(layer.position, layer),
+                rotation: exportProperty(layer.rotation, layer),
+                orientation: exportProperty(layer.orientation, layer),
+            };
+
+            if (layer instanceof CameraLayer) {
+                exportedObject.fov = exportProperty(layer.zoom, layer, zoomToAngle);
+            }
+
+            if (layer instanceof AVLayer) {
+                // Export layer source
+                var alreadyExported = false;
+                for (var i = 0; i < exportedSources.length; i++) {
+                    if (exportedSources[i] === layer.source) {
+                        alreadyExported = true;
+                        break;
+                    }
+                }
+                if (!alreadyExported) {
+                    exportedSources.push(layer.source);
+                    json.sources.push(exportSource(layer.source));
+                }
+                exportedObject.source = exportedSources.indexOf(layer.source);
+
+                exportedObject.scale = exportProperty(layer.scale, layer);
+                exportedObject.opacity = exportProperty(layer.opacity, layer);
+                exportedObject.nullLayer = layer.nullLayer;
+            }
+
+            return exportedObject;
+        }
+
+        for (var j = 0; j < layersToExport.length; j++) {
+            json.layers.push(exportLayer(layersToExport[j]));
         }
 
         var savePath = settings.savePath.replace(/\.\w+$/, '.json');

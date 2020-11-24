@@ -27,8 +27,9 @@ class ImportAECameraData(bpy.types.Operator, ImportHelper):
         with open(self.filepath) as f:
             data = json.load(f)
 
-            if data.get('version', 0) > 1:
-                self.report({'WARNING'}, 'This file is too new. Update this add-on.')
+            fileVersion = data.get('version', 0)
+            if fileVersion != 2:
+                self.report({'WARNING'}, 'This file is too old or new. Update this add-on.')
                 return {'CANCELLED'}
 
             for camdata in data['cameras']:
