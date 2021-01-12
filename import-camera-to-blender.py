@@ -8,8 +8,8 @@ bl_info = {
     "name": "Import AE Camera Keyframe Data",
     "description": "Import After Effects camera keyframe data into Blender",
     "author": "adroitwhiz",
-    "version": (0, 2),
-    "blender": (2, 80, 0),
+    "version": (0, 3),
+    "blender": (2, 90, 0),
     "category": "Import-Export"
 }
 
@@ -31,6 +31,31 @@ class ImportAECameraData(bpy.types.Operator, ImportHelper):
             if fileVersion != 2:
                 self.report({'WARNING'}, 'This file is too old or new. Update this add-on.')
                 return {'CANCELLED'}
+
+            imported_objects = dict()
+
+            def import_object(index):
+                src_object = data['layers'][index]
+
+                if src_object in imported_objects:
+                    return imported_objects[src_object]
+
+                dst_data = bpy.data.cameras.new(src_object['name'])
+                dst_object = bpy.data.objects.new(src_object['name'], dst_data)
+
+                child = dst_object
+
+                # Orientation is nonzero or keyframed
+                if src_object['orientation']['isKeyframed'] or any(abs(v) > 1e-12 for v in src_object['orientation']['value']):
+                    orientation_empty = bpy.data.objects.new(src_object['name'] + ' orientation', None)
+                    dst_object.parent = orientation_empty
+                    child = orientation_empty
+
+                if src_object['parentIndex'] is not None:
+                    child.parent = import_object(data['layers'][src_object['parentIndex']])
+
+                imported_objects[src_object] = dst_object
+                return dst_object
 
             for camdata in data['cameras']:
                 cam = bpy.data.cameras.new(camdata['name'])

@@ -318,6 +318,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                     valType === PropertyValueType.TwoD ||
                     valType === PropertyValueType.OneD)
                 ) {
+                    // Export keyframe Bezier data directly
                     exportedProp.keyframesFormat = 'bezier';
                     var numDimensions = valType === PropertyValueType.ThreeD ? 3 :
                         valType === PropertyValueType.TwoD ? 2 :
@@ -351,8 +352,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                         });
                     }
                 } else {
+                    // Bake keyframe data
                     exportedProp.keyframesFormat = 'calculated';
-                    // avoid floating point weirdness by rounding, just in case
                     var startTime, duration;
                     switch (settings.timeRange) {
                         case 'workArea':
@@ -369,8 +370,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                             duration = activeComp.duration;
                             break;
                     }
-                    var startFrame = Math.round(startTime * activeComp.frameRate);
-                    var endFrame = startFrame + Math.round(duration * activeComp.frameRate);
+                    // avoid floating point weirdness by rounding, just in case
+                    var startFrame = Math.floor(startTime * activeComp.frameRate);
+                    var endFrame = startFrame + Math.ceil(duration * activeComp.frameRate);
 
                     for (var i = startFrame; i < endFrame; i++) {
                         var time =  i / activeComp.frameRate;
@@ -424,7 +426,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 index: layer.index,
                 parentIndex: layer.parent ? layer.parent.index : null,
                 position: exportProperty(layer.position, layer),
-                rotation: exportProperty(layer.rotation, layer),
+                rotationX: exportProperty(layer.xRotation, layer),
+                rotationY: exportProperty(layer.yRotation, layer),
+                rotationZ: exportProperty(layer.rotation, layer),
                 orientation: exportProperty(layer.orientation, layer),
             };
 
