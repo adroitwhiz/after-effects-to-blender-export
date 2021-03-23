@@ -451,6 +451,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 }
                 exportedObject.source = exportedSources.indexOf(layer.source);
 
+                exportedObject.anchorPoint = exportProperty(layer.anchorPoint, layer);
                 exportedObject.scale = exportProperty(layer.scale, layer);
                 exportedObject.opacity = exportProperty(layer.opacity, layer);
                 exportedObject.nullLayer = layer.nullLayer;
