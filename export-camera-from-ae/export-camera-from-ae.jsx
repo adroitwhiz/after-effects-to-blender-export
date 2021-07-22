@@ -267,7 +267,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             for (var i = 0; i < activeComp.selectedLayers.length; i++) {
                 // For some reason validLayers.includes doesn't work here
                 for (var j = 0; j < validLayers.length; j++) {
-                    if (validLayers[i] === activeComp.selectedLayers[i]) {
+                    if (validLayers[j] === activeComp.selectedLayers[i]) {
                         layersToExport.push(activeComp.selectedLayers[i]);
                         break;
                     }
@@ -307,10 +307,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         }
 
         function exportProperty(prop, layer, fn) {
-            var exportedProp = {isKeyframed: prop.isTimeVarying};
+            var valType = prop.propertyValueType;
+            // The ternary conditional operator is left-associative in ExtendScript. HATE. HATE. HATE. HATE. HATE. HATE. HATE. HATE.
+            var numDimensions = (valType === PropertyValueType.ThreeD || valType === PropertyValueType.ThreeD_SPATIAL ? 3 :
+                (valType === PropertyValueType.TwoD || valType === PropertyValueType.TwoD_SPATIAL ? 2 :
+                    1));
+            var exportedProp = {isKeyframed: prop.isTimeVarying, numDimensions: numDimensions};
+
             if (prop.isTimeVarying) {
                 exportedProp.keyframes = [];
-                var valType = prop.propertyValueType;
                 if (
                     (!prop.expressionEnabled) &&
                     (!fn) &&
@@ -320,9 +325,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 ) {
                     // Export keyframe Bezier data directly
                     exportedProp.keyframesFormat = 'bezier';
-                    var numDimensions = valType === PropertyValueType.ThreeD ? 3 :
-                        valType === PropertyValueType.TwoD ? 2 :
-                            1;
                     for (var keyIndex = 1; keyIndex <= prop.numKeys; keyIndex++) {
                         var time = prop.keyTime(keyIndex);
                         var value = prop.keyValue(keyIndex);
