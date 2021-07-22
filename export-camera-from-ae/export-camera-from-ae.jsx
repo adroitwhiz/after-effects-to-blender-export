@@ -248,16 +248,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         d.window.show();
     }
 
-    function KeyframableProperty(isKeyframed) {
-        if (isKeyframed) {
-            this.startFrame = 0;
-            this.keyframes = [];
-        } else {
-            this.value = null;
-        }
-        this.isKeyframed = isKeyframed;
-    }
-
     function runExport(settings, opts) {
         var validLayers = opts.validLayers;
         var activeComp = opts.activeComp;
@@ -306,7 +296,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             throw new Error('Could not un-enum ' + val);
         }
 
-        function exportProperty(prop, layer, fn) {
+        function exportProperty(prop, layer) {
             var valType = prop.propertyValueType;
             // The ternary conditional operator is left-associative in ExtendScript. HATE. HATE. HATE. HATE. HATE. HATE. HATE. HATE.
             var numDimensions = (valType === PropertyValueType.ThreeD || valType === PropertyValueType.ThreeD_SPATIAL ? 3 :
@@ -315,10 +305,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             var exportedProp = {isKeyframed: prop.isTimeVarying, numDimensions: numDimensions};
 
             if (prop.isTimeVarying) {
-                exportedProp.keyframes = [];
+                exportedProp.keyframeChannels = [];
+                for (var i = 0; i < numDimensions; i++) {
+                    exportedProp.keyframeChannels.push([]);
+                }
                 if (
                     (!prop.expressionEnabled) &&
-                    (!fn) &&
                     (valType === PropertyValueType.ThreeD ||
                     valType === PropertyValueType.TwoD ||
                     valType === PropertyValueType.OneD)
@@ -332,9 +324,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                         var easeOut = prop.keyOutTemporalEase(keyIndex);
                         var interpolationIn = unenum(prop.keyInInterpolationType(keyIndex));
                         var interpolationOut = unenum(prop.keyOutInterpolationType(keyIndex));
-                        var vals = [];
                         for (var i = 0; i < numDimensions; i++) {
-                            vals.push({
+                            exportedProp.keyframeChannels[i].push({
                                 value: Array.isArray(value) ? value[i] : value,
                                 easeIn: {
                                     speed: easeIn[i].speed,
@@ -343,15 +334,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                                 easeOut: {
                                     speed: easeOut[i].speed,
                                     influence: easeOut[i].influence
-                                }
+                                },
+                                time: prop.keyTime(keyIndex),
+                                interpolationIn: interpolationIn,
+                                interpolationOut: interpolationOut
                             })
                         }
-                        exportedProp.keyframes.push({
-                            time: prop.keyTime(keyIndex),
-                            value: vals,
-                            interpolationIn: interpolationIn,
-                            interpolationOut: interpolationOut
-                        });
                     }
                 } else {
                     // Bake keyframe data
@@ -374,17 +362,19 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                     }
                     // avoid floating point weirdness by rounding, just in case
                     var startFrame = Math.floor(startTime * activeComp.frameRate);
+                    exportedProp.startFrame = startFrame;
                     var endFrame = startFrame + Math.ceil(duration * activeComp.frameRate);
 
                     for (var i = startFrame; i < endFrame; i++) {
                         var time =  i / activeComp.frameRate;
                         var propVal = prop.valueAtTime(time, false /* preExpression */);
-                        if (fn) propVal = fn(propVal);
-                        exportedProp.keyframes.push(propVal);
+                        for (var j = 0; j < numDimensions; j++) {
+                            exportedProp.keyframeChannels[j].push(Array.isArray(propVal) ? propVal[j] : propVal);
+                        }
                     }
                 }
             } else {
-                exportedProp.value = fn ? fn(prop.value) : prop.value;
+                exportedProp.value = Array.isArray(prop.value) ? prop.value : [prop.value];
             }
 
             return exportedProp;
