@@ -245,6 +245,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             layers: [],
             sources: [],
             compSize: [activeComp.width, activeComp.height],
+            compName: activeComp.name,
+            compPixelAspect: activeComp.compPixelAspect,
             frameRate: activeComp.frameRate,
             version: fileVersion
         };

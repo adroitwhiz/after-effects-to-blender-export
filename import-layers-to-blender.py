@@ -18,10 +18,37 @@ class ImportAELayers(bpy.types.Operator, ImportHelper):
     """Import After Effects layes, as exported by the corresponding AE script"""
     bl_idname = "import.ae_layers"
     bl_label = "Import AE Layers"
+    bl_options = {"REGISTER", "UNDO", "PRESET"}
     filename_ext = ".json"
     filter_glob: bpy.props.StringProperty(
         default="*.json",
         options={'HIDDEN'},
+    )
+
+    scale_factor: bpy.props.FloatProperty(
+        name="Scale Factor",
+        description="Amount to scale the imported layers by. The default (0.01) maps one pixel to one centimeter",
+        min=0.0001,
+        max=10000.0,
+        default=0.01
+    )
+
+    comp_center_to_origin: bpy.props.BoolProperty(
+        name="Comp Center to Origin",
+        description="Translate everything over so that the composition center is at (0, 0, 0) (the origin)",
+        default=False
+    )
+
+    use_comp_resolution: bpy.props.BoolProperty(
+        name="Use Comp Resolution",
+        description="Change the scene resolution to the resolution of the imported layers' composition",
+        default=False
+    )
+
+    create_new_collection: bpy.props.BoolProperty(
+        name="Create New Collection",
+        description="Add all the imported layers to a new collection.",
+        default=False
     )
 
     def make_or_get_fcurve(self, action, data_path, index=-1):
@@ -155,7 +182,8 @@ class ImportAELayers(bpy.types.Operator, ImportHelper):
             setattr(obj, data_path, cur_val)
 
     def execute(self, context):
-        scale_factor = 0.01
+        scale_factor = self.scale_factor
+
         with open(self.filepath) as f:
             data = json.load(f)
 
@@ -245,7 +273,7 @@ class ImportAELayers(bpy.types.Operator, ImportHelper):
                         data_index=0,
                         prop_data=layer['scale']['channels'][0],
                         framerate=data['frameRate'],
-                        mul=scale_factor
+                        mul=0.01
                     )
                     self.import_property(
                         obj=transform_target,
@@ -253,7 +281,7 @@ class ImportAELayers(bpy.types.Operator, ImportHelper):
                         data_index=2,
                         prop_data=layer['scale']['channels'][1],
                         framerate=data['frameRate'],
-                        mul=scale_factor
+                        mul=0.01
                     )
                     self.import_property(
                         obj = transform_target,
@@ -261,7 +289,7 @@ class ImportAELayers(bpy.types.Operator, ImportHelper):
                         data_index=1,
                         prop_data=layer['scale']['channels'][2],
                         framerate=data['frameRate'],
-                        mul=scale_factor
+                        mul=0.01
                     )
 
                 ANGLE_CONVERSION_FACTOR = pi / 180
@@ -384,6 +412,8 @@ class ImportAELayers(bpy.types.Operator, ImportHelper):
                     transform_target.parent = point_of_interest_parent
                     transform_target = point_of_interest_parent
 
+                should_translate = self.comp_center_to_origin and layer['parentIndex'] is None
+
                 if 'position' in layer:
                     self.import_property(
                         obj=transform_target,
@@ -391,7 +421,8 @@ class ImportAELayers(bpy.types.Operator, ImportHelper):
                         data_index=0,
                         prop_data=layer['position']['channels'][0],
                         framerate=data['frameRate'],
-                        mul=scale_factor
+                        mul=scale_factor,
+                        add=-data['compSize'][0] * 0.5 * self.scale_factor if should_translate else 0
                     )
                     self.import_property(
                         obj=transform_target,
@@ -399,7 +430,8 @@ class ImportAELayers(bpy.types.Operator, ImportHelper):
                         data_index=2,
                         prop_data=layer['position']['channels'][1],
                         framerate=data['frameRate'],
-                        mul=-scale_factor
+                        mul=-scale_factor,
+                        add=data['compSize'][1] * 0.5 * self.scale_factor if should_translate else 0
                     )
                     self.import_property(
                         obj = transform_target,
@@ -427,13 +459,38 @@ class ImportAELayers(bpy.types.Operator, ImportHelper):
                 if layer['parentIndex'] is not None:
                     obj.parent = innermost_objects_by_index[layer['parentIndex']]
 
+            if self.create_new_collection:
+                dst_collection = bpy.data.collections.new(data['compName'])
+                bpy.context.collection.children.link(dst_collection)
+            else:
+                dst_collection = bpy.context.collection
+
             for obj in added_objects:
-                bpy.context.collection.objects.link(obj)
+                dst_collection.objects.link(obj)
                 obj.select_set(True)
 
             bpy.context.view_layer.update()
 
+            if self.use_comp_resolution:
+                render_settings = bpy.context.scene.render
+                render_settings.resolution_x = data['compSize'][0]
+                render_settings.resolution_y = data['compSize'][1]
+
             return {'FINISHED'}
+
+    def draw(self, context):
+        layout = self.layout
+        # Give the checkboxes room to breathe
+        layout.use_property_split = False
+
+        sfile = context.space_data
+        operator = sfile.active_operator
+
+        layout.prop(operator, 'scale_factor')
+        layout.prop(operator, 'comp_center_to_origin')
+        layout.prop(operator, 'use_comp_resolution')
+        layout.prop(operator, 'create_new_collection')
+        layout.prop(operator, 'handle_framerate')
 
 def menu_func_import(self, context):
     self.layout.operator(ImportAELayers.bl_idname, text="After Effects layer data (.json)")

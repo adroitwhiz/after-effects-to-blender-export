@@ -1,13 +1,11 @@
 - Import options:
-    - Comp center to origin
     - Auto adjust start/end frame on import
-    - Scale factor
     - Flip Y/Z axes
     - Framerate:
         - Set Blender framerate to comp framerate
         - Maintain frame numbers
         - Remap comp framerate to Blender framerate
-    - Set resolution
+- Pixel aspect ratio (AE expands horizontally, Blender crops vertically according to "Sensor Fit")
 - Nested 3D compositions
 - 3D layer -> 2D layer -> 3D layer parent chain loses Z-transforming properties
 - Remove unanimated anchor points especially on null layers
