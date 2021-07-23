@@ -219,25 +219,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         getCompositionViewer().setActive();
         var activeComp = app.project.activeItem;
 
-        var validLayers = [];
-        for (var i = 1; i <= activeComp.layers.length; i++) {
-            var layer = activeComp.layers[i];
-            if (
-                layer instanceof CameraLayer ||
-                (
-                    layer instanceof AVLayer &&
-                    layer.threeDLayer &&
-                    layer.source
-                )
-            ) {
-                validLayers.push(activeComp.layers[i]);
-            }
-        }
-
         var d = showDialog(
             function(settings) {
                 runExport(settings, {
-                    validLayers: validLayers,
                     activeComp: activeComp
                 })
             },
@@ -249,22 +233,29 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
     }
 
     function runExport(settings, opts) {
-        var validLayers = opts.validLayers;
         var activeComp = opts.activeComp;
-        var layersToExport;
+        var layersToExport = [];
         if (settings.selectedLayersOnly) {
-            layersToExport = [];
+            var layerIndicesMarkedForExport = {};
             for (var i = 0; i < activeComp.selectedLayers.length; i++) {
-                // For some reason validLayers.includes doesn't work here
-                for (var j = 0; j < validLayers.length; j++) {
-                    if (validLayers[j] === activeComp.selectedLayers[i]) {
-                        layersToExport.push(activeComp.selectedLayers[i]);
-                        break;
+                var layer = activeComp.selectedLayers[i];
+                layersToExport.push(layer);
+                layerIndicesMarkedForExport[layer.index] = true;
+
+                var parent = layer.parent;
+                while (parent) {
+                    if (!(parent.index in layerIndicesMarkedForExport)) {
+                        layersToExport.push(parent);
+                        layerIndicesMarkedForExport[parent.index] = true;
                     }
+                    parent = parent.parent;
                 }
             }
         } else {
-            layersToExport = validLayers;
+            for (var i = 1; i <= activeComp.layers.length; i++) {
+                var layer = activeComp.layers[i];
+                layersToExport.push(layer);
+            }
         }
 
         var json = {
@@ -352,7 +343,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                                 interpolationIn: interpolationIn,
                                 interpolationOut: interpolationOut
                             })
-                            //alert(prop.name + ' ' + prop.numKeys + ' ' +  exportedProp.channels[i + channelOffset].keyframes.length)
                         }
                     }
                 } else {
@@ -431,7 +421,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             } else if (layer instanceof AVLayer) {
                 layerType = 'av';
             } else {
-                throw new Error('Unsupported layer type on ' + layer.name);
+                layerType = 'unknown';
             }
 
             var exportedObject = {
@@ -487,7 +477,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             } catch (err) {
                 // Give specific information on what layer is causing the problem
                 // This allows the user to fix it by deselecting the layer, and makes debugging easier
-                throw new Error('Error exporting layer "' + layersToExport[j].name + '": ' + err.message);
+                throw new Error('Error exporting layer "' + layersToExport[j].name + '"\nOn line ' + err.line + ': ' + err.message);
             }
         }
 
