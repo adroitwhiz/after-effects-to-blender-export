@@ -450,6 +450,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 exportedObject.zoom = exportProperty(layer.zoom, layer);
             }
 
+            // The "Point of Interest" property exists and is not hidden, meaning it's taking effect
+            // Interestingly, `pointOfInterest.canSetExpression` is always true for other layer types
+            if ((layer instanceof CameraLayer || layer instanceof LightLayer) && layer.pointOfInterest.canSetExpression) {
+                exportedObject.pointOfInterest = exportProperty(layer.pointOfInterest, layer);
+            }
+
             if (layer instanceof AVLayer) {
                 // Export layer source
                 var alreadyExported = false;
