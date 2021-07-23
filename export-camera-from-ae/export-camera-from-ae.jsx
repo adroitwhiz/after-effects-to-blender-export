@@ -191,7 +191,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 cb(getSettings());
                 writeSettingsFile(getSettings(), settingsVersion);
             } catch (err) {
-                alert(err);
+                alert(err.message, 'Error');
             }
             window.close();
         };
@@ -481,7 +481,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         }
 
         for (var j = 0; j < layersToExport.length; j++) {
-            json.layers.push(exportLayer(layersToExport[j]));
+            try {
+                var exportedLayer = exportLayer(layersToExport[j]);
+                json.layers.push(exportedLayer);
+            } catch (err) {
+                // Give specific information on what layer is causing the problem
+                // This allows the user to fix it by deselecting the layer, and makes debugging easier
+                throw new Error('Error exporting layer "' + layersToExport[j].name + '": ' + err.message);
+            }
         }
 
         var savePath = settings.savePath.replace(/\.\w+$/, '.json');
@@ -494,6 +501,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         getCompositionViewer();
         main();
     } catch (err) {
-        alert(err);
+        alert(err.message, 'Error');
     }
 }
