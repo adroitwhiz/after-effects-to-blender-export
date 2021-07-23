@@ -277,10 +277,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
         var exportedSources = [];
 
-        function zoomToAngle(zoom) {
-            return Math.atan((activeComp.width/zoom)/2)*(360/Math.PI);
-        }
-
         function unenum(val) {
             switch (val) {
                 case KeyframeInterpolationType.LINEAR: return 'linear';
@@ -451,7 +447,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             };
 
             if (layer instanceof CameraLayer) {
-                exportedObject.fov = exportProperty(layer.zoom, layer, zoomToAngle);
+                exportedObject.zoom = exportProperty(layer.zoom, layer);
             }
 
             if (layer instanceof AVLayer) {
