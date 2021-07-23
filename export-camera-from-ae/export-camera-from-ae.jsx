@@ -281,11 +281,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             return Math.atan((activeComp.width/zoom)/2)*(360/Math.PI);
         }
 
-        for (var i = 0; i < layersToExport.length; i++) {
-            var AELayer = layersToExport[i];
-            json.layers.push(exportLayer(AELayer));
-        }
-
         function unenum(val) {
             switch (val) {
                 case KeyframeInterpolationType.LINEAR: return 'linear';
@@ -296,19 +291,36 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             throw new Error('Could not un-enum ' + val);
         }
 
-        function exportProperty(prop, layer) {
+        function exportProperty(prop, layer, exportedProp, channelOffset) {
             var valType = prop.propertyValueType;
             // The ternary conditional operator is left-associative in ExtendScript. HATE. HATE. HATE. HATE. HATE. HATE. HATE. HATE.
             var numDimensions = (valType === PropertyValueType.ThreeD || valType === PropertyValueType.ThreeD_SPATIAL ? 3 :
                 (valType === PropertyValueType.TwoD || valType === PropertyValueType.TwoD_SPATIAL ? 2 :
                     1));
-            var exportedProp = {isKeyframed: prop.isTimeVarying, numDimensions: numDimensions};
+
+            if (prop.isSeparationFollower && numDimensions > 1) {
+                throw new Error('Separation follower cannot have more than 1 dimension');
+            }
+
+            if (typeof exportedProp === 'undefined') {
+                exportedProp = {numDimensions: numDimensions, channels: []};
+                for (var i = 0; i < numDimensions; i++) {
+                    exportedProp.channels.push({});
+                }
+            }
+
+            if (prop.isSeparationLeader && prop.dimensionsSeparated) {
+                for (var i = 0; i < numDimensions; i++) {
+                    var dimProp = prop.getSeparationFollower(i);
+                    exportProperty(dimProp, layer, exportedProp, i);
+                }
+
+                return exportedProp;
+            }
+
+            if (typeof channelOffset === 'undefined') channelOffset = 0;
 
             if (prop.isTimeVarying) {
-                exportedProp.keyframeChannels = [];
-                for (var i = 0; i < numDimensions; i++) {
-                    exportedProp.keyframeChannels.push([]);
-                }
                 if (
                     (!prop.expressionEnabled) &&
                     (valType === PropertyValueType.ThreeD ||
@@ -316,7 +328,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                     valType === PropertyValueType.OneD)
                 ) {
                     // Export keyframe Bezier data directly
-                    exportedProp.keyframesFormat = 'bezier';
+                    for (var i = 0; i < numDimensions; i++) {
+                        exportedProp.channels[i + channelOffset].isKeyframed = true;
+                        exportedProp.channels[i + channelOffset].keyframesFormat = 'bezier';
+                        exportedProp.channels[i + channelOffset].keyframes = [];
+                    }
+
                     for (var keyIndex = 1; keyIndex <= prop.numKeys; keyIndex++) {
                         var time = prop.keyTime(keyIndex);
                         var value = prop.keyValue(keyIndex);
@@ -325,7 +342,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                         var interpolationIn = unenum(prop.keyInInterpolationType(keyIndex));
                         var interpolationOut = unenum(prop.keyOutInterpolationType(keyIndex));
                         for (var i = 0; i < numDimensions; i++) {
-                            exportedProp.keyframeChannels[i].push({
+                            exportedProp.channels[i + channelOffset].keyframes.push({
                                 value: Array.isArray(value) ? value[i] : value,
                                 easeIn: {
                                     speed: easeIn[i].speed,
@@ -339,11 +356,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                                 interpolationIn: interpolationIn,
                                 interpolationOut: interpolationOut
                             })
+                            //alert(prop.name + ' ' + prop.numKeys + ' ' +  exportedProp.channels[i + channelOffset].keyframes.length)
                         }
                     }
                 } else {
                     // Bake keyframe data
-                    exportedProp.keyframesFormat = 'calculated';
                     var startTime, duration;
                     switch (settings.timeRange) {
                         case 'workArea':
@@ -362,19 +379,28 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                     }
                     // avoid floating point weirdness by rounding, just in case
                     var startFrame = Math.floor(startTime * activeComp.frameRate);
-                    exportedProp.startFrame = startFrame;
                     var endFrame = startFrame + Math.ceil(duration * activeComp.frameRate);
+
+                    for (var i = 0; i < numDimensions; i++) {
+                        exportedProp.channels[i + channelOffset].isKeyframed = true;
+                        exportedProp.channels[i + channelOffset].keyframesFormat = 'calculated';
+                        exportedProp.channels[i + channelOffset].startFrame = startFrame;
+                        exportedProp.channels[i + channelOffset].keyframes = [];
+                    }
 
                     for (var i = startFrame; i < endFrame; i++) {
                         var time =  i / activeComp.frameRate;
                         var propVal = prop.valueAtTime(time, false /* preExpression */);
                         for (var j = 0; j < numDimensions; j++) {
-                            exportedProp.keyframeChannels[j].push(Array.isArray(propVal) ? propVal[j] : propVal);
+                            exportedProp.channels[j].keyframes.push(Array.isArray(propVal) ? propVal[j] : propVal);
                         }
                     }
                 }
             } else {
-                exportedProp.value = Array.isArray(prop.value) ? prop.value : [prop.value];
+                for (var i = 0; i < numDimensions; i++) {
+                    exportedProp.channels[i + channelOffset].isKeyframed = false;
+                    exportedProp.channels[i + channelOffset].value = Array.isArray(prop.value) ? prop.value[i] : prop.value;
+                }
             }
 
             return exportedProp;
