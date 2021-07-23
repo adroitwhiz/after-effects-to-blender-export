@@ -1,0 +1,21 @@
+- Import options:
+    - Comp center to origin
+    - Auto adjust start/end frame on import
+    - Scale factor
+    - Flip Y/Z axes
+    - Framerate:
+        - Set Blender framerate to comp framerate
+        - Maintain frame numbers
+        - Remap comp framerate to Blender framerate
+    - Set resolution
+- Nested 3D compositions
+- 3D layer -> 2D layer -> 3D layer parent chain loses Z-transforming properties
+- Remove unanimated anchor points especially on null layers
+- Images/videos as planes
+- Lights
+- Material options
+- Text layers
+- Shape layers
+- Opacity
+- "Bake everything" export option
+- Layer in/out points to Disable in Viewport/Render
