@@ -436,7 +436,7 @@ class ImportAELayers(bpy.types.Operator, ImportHelper):
             return {'FINISHED'}
 
 def menu_func_import(self, context):
-    self.layout.operator(ImportAELayers.bl_idname, text="Exported After Effects layer data (.json)")
+    self.layout.operator(ImportAELayers.bl_idname, text="After Effects layer data (.json)")
 
 def register():
     bpy.utils.register_class(ImportAELayers)
