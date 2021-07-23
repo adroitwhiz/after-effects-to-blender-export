@@ -6,18 +6,18 @@ import mathutils
 from math import radians, tau, pi
 
 bl_info = {
-    "name": "Import AE Camera Keyframe Data",
-    "description": "Import After Effects camera keyframe data into Blender",
+    "name": "Import After Effects Layers",
+    "description": "Import After Effects layers into Blender",
     "author": "adroitwhiz",
     "version": (0, 3),
     "blender": (2, 90, 0),
     "category": "Import-Export"
 }
 
-class ImportAECameraData(bpy.types.Operator, ImportHelper):
-    """Import After Effects camera data, as exported by the corresponding AE script"""
-    bl_idname = "import.ae_camera"
-    bl_label = "Import AE Camera Data"
+class ImportAELayers(bpy.types.Operator, ImportHelper):
+    """Import After Effects layes, as exported by the corresponding AE script"""
+    bl_idname = "import.ae_layers"
+    bl_label = "Import AE Layers"
     filename_ext = ".json"
     filter_glob: bpy.props.StringProperty(
         default="*.json",
@@ -436,14 +436,14 @@ class ImportAECameraData(bpy.types.Operator, ImportHelper):
             return {'FINISHED'}
 
 def menu_func_import(self, context):
-    self.layout.operator(ImportAECameraData.bl_idname, text="After Effects camera data (.json)")
+    self.layout.operator(ImportAELayers.bl_idname, text="Exported After Effects layer data (.json)")
 
 def register():
-    bpy.utils.register_class(ImportAECameraData)
+    bpy.utils.register_class(ImportAELayers)
     bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
 
 def unregister():
-    bpy.utils.unregister_class(ImportAECameraData)
+    bpy.utils.unregister_class(ImportAELayers)
     bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
 
 if __name__ == "__main__":
