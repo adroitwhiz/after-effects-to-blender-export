@@ -29,10 +29,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
     var settingsFilePath = Folder.userData.fullName + '/cam-export-settings.json';
 
     function showDialog(cb, opts) {
-        // helpTip doesn't work on groups so I need to apply the same helpTip string to both the controls themselves
-        // and their labels :(
-        var centeredCameraHelpTip = "Has the same effect as \"Centered Comp Camera\" in the Cinema 4D plugin";
-
         var c = controlFunctions;
         var resourceString = createResourceString(
             c.Dialog({
@@ -81,16 +77,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                             value: opts.selectionExists,
                             enabled: opts.selectionExists
                         })
-                    }),
-                    centeredCamera: c.Group({
-                        label: c.StaticText({
-                            text: 'Comp camera is centered',
-                            helpTip: centeredCameraHelpTip
-                        }),
-                        value: c.Checkbox({
-                            value: false,
-                            helpTip: centeredCameraHelpTip
-                        })
                     })
                 }),
                 separator: c.Group({ preferredSize: ['', 3] }),
@@ -119,7 +105,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 layerDuration: window.settings.timeRange.value.layerDuration,
                 // automatic: window.settings.timeRange.value.automatic
             },
-            centeredCamera: window.settings.centeredCamera,
             selectedLayersOnly: window.settings.selectedLayersOnly,
             exportButton: window.buttons.doExport,
             cancelButton: window.buttons.cancel
@@ -166,7 +151,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             return {
                 savePath: controls.savePath.text,
                 timeRange: timeRange,
-                centeredCamera: controls.centeredCamera.value.value,
                 selectedLayersOnly: controls.selectedLayersOnly.value.value
             };
         }
@@ -178,7 +162,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 if (!controls.timeRange.hasOwnProperty(button)) continue;
                 controls.timeRange[button].value = button === settings.timeRange;
             }
-            controls.centeredCamera.value.value = settings.centeredCamera;
         }
 
         controls.saveBrowse.onClick = function() {
