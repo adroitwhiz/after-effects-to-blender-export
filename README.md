@@ -44,12 +44,6 @@ When checked, this ensures that only the layers you select will be exported. If 
 #### Bake transforms
 When checked, all layer transforms will be "baked" in After Effects instead of being imported keyframes-and-all into Blender. In case of a bug in the importer, complicated scenarios (like a 3D layer parented to a 2D layer parented to a 3D layer), or unimplemented features (like Auto-Orient), this may be necessary.
 
-#### Comp camera is centered
-
-If checked, the exporter will treat the center of the After Effects composition (half its width and height) as the 3D origin. This matches the Cineware option for using a centered comp camera, and if you select that option, you should check this box:
-
-![Centered comp camera option](docs/ae-centered-comp-camera.png)
-
 ## Installation / Usage (Blender)
 
 To install the Blender add-on, [download](https://github.com/adroitwhiz/after-effects-to-blender-export/raw/master/import-comp-to-blender.py), install, and then enable it via the add-on preferences:
