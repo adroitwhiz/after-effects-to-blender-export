@@ -84,6 +84,7 @@ If checked, this will place all imported objects into a new collection.
 If checked, this will adjust the "Start"/"End" frame range in the timeline to the imported composition's work area.
 
 Once the desired options have been set, navigate to the .json file exported via the After Effects script, and click Import AE Comp:
+
 ![Blender step 4](docs/blender-step4.png)
 
 ## Development
