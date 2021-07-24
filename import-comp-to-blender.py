@@ -7,18 +7,18 @@ from math import radians, tau, pi
 from itertools import chain
 
 bl_info = {
-    "name": "Import After Effects Layers",
-    "description": "Import After Effects layers into Blender",
+    "name": "Import After Effects Composition",
+    "description": "Import layers from an After Effects composition into Blender",
     "author": "adroitwhiz",
     "version": (0, 3),
     "blender": (2, 90, 0),
     "category": "Import-Export"
 }
 
-class ImportAELayers(bpy.types.Operator, ImportHelper):
-    """Import After Effects layes, as exported by the corresponding AE script"""
-    bl_idname = "import.ae_layers"
-    bl_label = "Import AE Layers"
+class ImportAEComp(bpy.types.Operator, ImportHelper):
+    """Import layers from an After Effects composition, as exported by the corresponding AE script"""
+    bl_idname = "import.ae_comp"
+    bl_label = "Import AE Comp"
     bl_options = {"REGISTER", "UNDO", "PRESET"}
     filename_ext = ".json"
     filter_glob: bpy.props.StringProperty(
@@ -42,7 +42,7 @@ class ImportAELayers(bpy.types.Operator, ImportHelper):
 
     use_comp_resolution: bpy.props.BoolProperty(
         name="Use Comp Resolution",
-        description="Change the scene resolution to the resolution of the imported layers' composition",
+        description="Change the scene resolution to the resolution of the imported composition",
         default=False
     )
 
@@ -547,14 +547,14 @@ class ImportAELayers(bpy.types.Operator, ImportHelper):
         layout.prop(operator, 'handle_framerate')
 
 def menu_func_import(self, context):
-    self.layout.operator(ImportAELayers.bl_idname, text="After Effects layer data (.json)")
+    self.layout.operator(ImportAEComp.bl_idname, text="After Effects composition data, converted (.json)")
 
 def register():
-    bpy.utils.register_class(ImportAELayers)
+    bpy.utils.register_class(ImportAEComp)
     bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
 
 def unregister():
-    bpy.utils.unregister_class(ImportAELayers)
+    bpy.utils.unregister_class(ImportAEComp)
     bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
 
 if __name__ == "__main__":

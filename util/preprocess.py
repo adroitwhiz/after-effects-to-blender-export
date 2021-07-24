@@ -12,5 +12,5 @@ def process_includes(file_path):
         contents = file.read()
         return incl_regex.sub(make_include, contents)
 
-with open('Export Layer Data to JSON.jsx', 'w') as file:
-    file.write(process_includes('export-layers-from-ae/export-layers-from-ae.jsx'))
+with open('Export Composition Data to JSON.jsx', 'w') as file:
+    file.write(process_includes('export-comp-from-ae/export-comp-from-ae.jsx'))
