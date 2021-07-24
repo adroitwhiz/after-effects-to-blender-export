@@ -213,14 +213,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 }),
                 separator: c.Group({ preferredSize: ['', 3] }),
                 buttons: c.Group({
-                    alignment: 'right',
-                    doExport: c.Button({
-                        properties: { name: 'report' },
-                        text: 'Report Bug'
-                    }),
                     close: c.Button({
                         properties: { name: 'close' },
                         text: 'Close'
+                    }),
+                    alignment: 'right',
+                    report: c.Button({
+                        properties: { name: 'report' },
+                        text: 'Report Bug',
+                        active: true
                     })
                 })
             })
@@ -241,6 +242,51 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         window.show();
     }
 
+    function checkPermissions() {
+        if (app.preferences.getPrefAsLong('Main Pref Section', 'Pref_SCRIPTING_FILE_NETWORK_SECURITY') === 1) {
+            return true;
+        }
+        var c = controlFunctions;
+        var resourceString = createResourceString(
+            c.Dialog({
+                text: 'Error',
+                header: c.StaticText({
+                    text: 'The "Allow Scripts to Write Files and Access Network" setting is disabled, and must be enabled in order for this script to work.',
+                    alignment: ['left', 'top']
+                }),
+                separator: c.Group({ preferredSize: ['', 3] }),
+                buttons: c.Group({
+                    alignment: 'right',
+                    close: c.Button({
+                        properties: { name: 'close' },
+                        text: 'Close'
+                    }),
+                    openSettings: c.Button({
+                        properties: { name: 'openSettings' },
+                        text: 'Open Script Settings',
+                        active: true
+                    })
+                })
+            })
+        );
+
+        var window = new Window(resourceString, 'Error', undefined, {resizeable: false});
+
+        window.buttons.openSettings.onClick = function() {
+            // Open the Scripting and Expressions settings dialog (command #3131, as documented... nowhere)
+            // This won't work if called inside the callback for some reason (thanks Adobe!) so use scheduleTask
+            app.scheduleTask("app.executeCommand(3131)", 0, false);
+            window.close();
+        }
+
+        window.buttons.close.onClick = function() {
+            window.close();
+        }
+
+        window.show();
+        return false;
+    }
+
     function getCompositionViewer() {
         var project = app.project;
         if (!project) {
@@ -256,6 +302,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
     }
 
     function main() {
+        if (!checkPermissions()) return;
         getCompositionViewer().setActive();
         var activeComp = app.project.activeItem;
 
