@@ -4,6 +4,7 @@ import bmesh
 from bpy_extras.io_utils import ImportHelper
 import mathutils
 from math import radians, tau, pi
+from itertools import chain
 
 bl_info = {
     "name": "Import After Effects Layers",
@@ -181,6 +182,45 @@ class ImportAELayers(bpy.types.Operator, ImportHelper):
                 cur_val[data_index] = prop_data['value'] * mul + add
             setattr(obj, data_path, cur_val)
 
+    def import_baked_transform(self, obj, data, func):
+        self.ensure_action_exists(obj)
+        obj.rotation_mode = 'QUATERNION'
+
+        loc_fcurves = [self.make_or_get_fcurve(obj.animation_data.action, 'location', index) for index in range(3)]
+        rot_fcurves = [self.make_or_get_fcurve(obj.animation_data.action, 'rotation_quaternion', index) for index in range(4)]
+        scale_fcurves = [self.make_or_get_fcurve(obj.animation_data.action, 'scale', index) for index in range(3)]
+
+        keyframes = data['keyframes']
+        start_frame = data['startFrame']
+
+        for fcurve in chain(loc_fcurves, rot_fcurves, scale_fcurves):
+            fcurve.keyframe_points.add(len(keyframes))
+
+        prev_rot = None
+        for i in range(len(keyframes)):
+            keyframe = keyframes[i]
+            mat = mathutils.Matrix((
+                (keyframe[0], keyframe[1], keyframe[2], keyframe[3]),
+                (keyframe[4], keyframe[5], keyframe[6], keyframe[7]),
+                (keyframe[8], keyframe[9], keyframe[10], keyframe[11]),
+                (0.0, 0.0, 0.0, 1.0)
+            ))
+            loc, rot, scale = mat.decompose()
+
+            if func is not None:
+                loc, rot, scale = func(loc, rot, scale)
+
+            if prev_rot is not None:
+                rot.make_compatible(prev_rot)
+            prev_rot = rot
+
+            for j in range(3):
+                loc_fcurves[j].keyframe_points[i].co_ui = [i + start_frame, loc[j]]
+            for j in range(4):
+                rot_fcurves[j].keyframe_points[i].co_ui = [i + start_frame, rot[j]]
+            for j in range(3):
+                scale_fcurves[j].keyframe_points[i].co_ui = [i + start_frame, scale[j]]
+
     def execute(self, context):
         scale_factor = self.scale_factor
 
@@ -232,215 +272,227 @@ class ImportAELayers(bpy.types.Operator, ImportHelper):
 
             transform_target = obj
 
-            if 'anchorPoint' in layer and (
-                any(channel['isKeyframed'] for channel in layer['anchorPoint']['channels']) or
-                any(abs(channel['value']) >= 1e-15 for channel in layer['anchorPoint']['channels'])
-            ):
-                anchor_parent = bpy.data.objects.new(layer['name'] + ' Anchor Point', None)
-                anchor_parent.empty_display_type = 'ARROWS'
-                added_objects.append(anchor_parent)
-                self.import_property(
-                    obj=transform_target,
-                    data_path='location',
-                    data_index=0,
-                    prop_data=layer['anchorPoint']['channels'][0],
-                    framerate=data['frameRate'],
-                    mul=-scale_factor
-                )
-                self.import_property(
-                    obj=transform_target,
-                    data_path='location',
-                    data_index=2,
-                    prop_data=layer['anchorPoint']['channels'][1],
-                    framerate=data['frameRate'],
-                    mul=scale_factor
-                )
-                self.import_property(
-                    obj = transform_target,
-                    data_path='location',
-                    data_index=1,
-                    prop_data=layer['anchorPoint']['channels'][2],
-                    framerate=data['frameRate'],
-                    mul=-scale_factor
-                )
-                transform_target.parent = anchor_parent
-                transform_target = anchor_parent
+            if data['transformsBaked']:
+                # These are used to swap Z and -Y. Not sure this is the best way to do it.
+                pre_quat = mathutils.Quaternion((1.0, 0.0, 0.0), radians(-90.0))
+                post_quat = mathutils.Quaternion((1.0, 0.0, 0.0), radians(180.0 if layer['type'] == 'camera' else 90.0))
+                def transform(loc, rot, scale):
+                    loc = mathutils.Vector((loc[0] * scale_factor, loc[2] * scale_factor, -loc[1] * scale_factor))
+                    scale = mathutils.Vector((scale[0], scale[2], scale[1]))
+                    rot = pre_quat @ rot @ post_quat
+                    return loc, rot, scale
 
-            if 'scale' in layer:
-                self.import_property(
-                    obj=transform_target,
-                    data_path='scale',
-                    data_index=0,
-                    prop_data=layer['scale']['channels'][0],
-                    framerate=data['frameRate'],
-                    mul=0.01
-                )
-                self.import_property(
-                    obj=transform_target,
-                    data_path='scale',
-                    data_index=2,
-                    prop_data=layer['scale']['channels'][1],
-                    framerate=data['frameRate'],
-                    mul=0.01
-                )
-                self.import_property(
-                    obj = transform_target,
-                    data_path='scale',
-                    data_index=1,
-                    prop_data=layer['scale']['channels'][2],
-                    framerate=data['frameRate'],
-                    mul=0.01
-                )
-
-            ANGLE_CONVERSION_FACTOR = pi / 180
-            if layer['type'] == 'camera':
-                # Rotate camera upwards 90 degrees along the X axis
-                transform_target.rotation_mode = 'ZYX'
-                channel_order = [0, 1, 2]
-                channel_add = [pi / 2, 0, 0]
-                channel_multiply = [1, -1, -1]
+                self.import_baked_transform(obj, layer['transform'], transform)
             else:
-                transform_target.rotation_mode = 'YZX'
-                channel_order = [0, 2, 1]
-                channel_add = [0, 0, 0]
-                channel_multiply = [1, -1, 1]
-
-            for index, prop_name in enumerate(['rotationX', 'rotationY', 'rotationZ']):
-                if prop_name in layer:
+                if 'anchorPoint' in layer and (
+                    any(channel['isKeyframed'] for channel in layer['anchorPoint']['channels']) or
+                    any(abs(channel['value']) >= 1e-15 for channel in layer['anchorPoint']['channels'])
+                ):
+                    anchor_parent = bpy.data.objects.new(layer['name'] + ' Anchor Point', None)
+                    anchor_parent.empty_display_type = 'ARROWS'
+                    added_objects.append(anchor_parent)
                     self.import_property(
                         obj=transform_target,
-                        data_path='rotation_euler',
-                        data_index=channel_order[index],
-                        prop_data=layer[prop_name]['channels'][0],
+                        data_path='location',
+                        data_index=0,
+                        prop_data=layer['anchorPoint']['channels'][0],
                         framerate=data['frameRate'],
-                        mul=ANGLE_CONVERSION_FACTOR * channel_multiply[index],
-                        add=channel_add[index]
+                        mul=-scale_factor
+                    )
+                    self.import_property(
+                        obj=transform_target,
+                        data_path='location',
+                        data_index=2,
+                        prop_data=layer['anchorPoint']['channels'][1],
+                        framerate=data['frameRate'],
+                        mul=scale_factor
+                    )
+                    self.import_property(
+                        obj = transform_target,
+                        data_path='location',
+                        data_index=1,
+                        prop_data=layer['anchorPoint']['channels'][2],
+                        framerate=data['frameRate'],
+                        mul=-scale_factor
+                    )
+                    transform_target.parent = anchor_parent
+                    transform_target = anchor_parent
+
+                if 'scale' in layer:
+                    self.import_property(
+                        obj=transform_target,
+                        data_path='scale',
+                        data_index=0,
+                        prop_data=layer['scale']['channels'][0],
+                        framerate=data['frameRate'],
+                        mul=0.01
+                    )
+                    self.import_property(
+                        obj=transform_target,
+                        data_path='scale',
+                        data_index=2,
+                        prop_data=layer['scale']['channels'][1],
+                        framerate=data['frameRate'],
+                        mul=0.01
+                    )
+                    self.import_property(
+                        obj = transform_target,
+                        data_path='scale',
+                        data_index=1,
+                        prop_data=layer['scale']['channels'][2],
+                        framerate=data['frameRate'],
+                        mul=0.01
                     )
 
-            if 'orientation' in layer:
-                all_keyframed = all(channel['isKeyframed'] for channel in layer['orientation']['channels'])
-                none_keyframed = all(not channel['isKeyframed'] for channel in layer['orientation']['channels'])
+                ANGLE_CONVERSION_FACTOR = pi / 180
+                if layer['type'] == 'camera':
+                    # Rotate camera upwards 90 degrees along the X axis
+                    transform_target.rotation_mode = 'ZYX'
+                    channel_order = [0, 1, 2]
+                    channel_add = [pi / 2, 0, 0]
+                    channel_multiply = [1, -1, -1]
+                else:
+                    transform_target.rotation_mode = 'YZX'
+                    channel_order = [0, 2, 1]
+                    channel_add = [0, 0, 0]
+                    channel_multiply = [1, -1, 1]
 
-                if not (all_keyframed or none_keyframed):
-                    raise ValueError('Orientation keyframe channels should either all be keyframed or all be not keyframed')
+                for index, prop_name in enumerate(['rotationX', 'rotationY', 'rotationZ']):
+                    if prop_name in layer:
+                        self.import_property(
+                            obj=transform_target,
+                            data_path='rotation_euler',
+                            data_index=channel_order[index],
+                            prop_data=layer[prop_name]['channels'][0],
+                            framerate=data['frameRate'],
+                            mul=ANGLE_CONVERSION_FACTOR * channel_multiply[index],
+                            add=channel_add[index]
+                        )
 
-                if not (none_keyframed and all(abs(channel['value']) < 1e-15 for channel in layer['orientation']['channels'])):
-                    orientation_parent = bpy.data.objects.new(layer['name'] + ' Orientation', None)
-                    orientation_parent.empty_display_type = 'ARROWS'
-                    added_objects.append(orientation_parent)
+                if 'orientation' in layer:
+                    all_keyframed = all(channel['isKeyframed'] for channel in layer['orientation']['channels'])
+                    none_keyframed = all(not channel['isKeyframed'] for channel in layer['orientation']['channels'])
 
-                    if all_keyframed:
-                        if any(channel['keyframesFormat'] != 'calculated' for channel in layer['orientation']['channels']):
-                            raise ValueError('Orientation keyframes must be in "calculated" format')
+                    if not (all_keyframed or none_keyframed):
+                        raise ValueError('Orientation keyframe channels should either all be keyframed or all be not keyframed')
 
-                        orientation_parent.rotation_mode = 'QUATERNION'
-                        self.ensure_action_exists(orientation_parent)
-                        num_keyframes = len(layer['orientation']['channels'][0]['keyframes'])
-                        start_frame = layer['orientation']['channels'][0]['startFrame']
-                        rot_fcurves = [self.make_or_get_fcurve(orientation_parent.animation_data.action, 'rotation_quaternion', i) for i in range(4)]
-                        for fcurve in rot_fcurves:
-                            fcurve.keyframe_points.add(num_keyframes)
-                            for i in range(num_keyframes):
-                                fcurve.keyframe_points[i].interpolation = 'LINEAR'
+                    if not (none_keyframed and all(abs(channel['value']) < 1e-15 for channel in layer['orientation']['channels'])):
+                        orientation_parent = bpy.data.objects.new(layer['name'] + ' Orientation', None)
+                        orientation_parent.empty_display_type = 'ARROWS'
+                        added_objects.append(orientation_parent)
 
-                        prev_angle = None
-                        for i, (x, y, z) in enumerate(zip(*(channel['keyframes'] for channel in layer['orientation']['channels']))):
-                            angle = mathutils.Matrix.Identity(3)
-                            # Apply AE orientation
-                            angle.rotate(mathutils.Euler((radians(x), radians(z), radians(-y)), 'YZX'))
-                            # Prevent discontinuities in the rotation which can mess up motion blur.
-                            # Euler angles also have a make_compatible function, but it doesn't always work, so it's necessary to use quaternions.
-                            quat = angle.to_quaternion()
-                            if prev_angle:
-                                quat.make_compatible(prev_angle)
+                        if all_keyframed:
+                            if any(channel['keyframesFormat'] != 'calculated' for channel in layer['orientation']['channels']):
+                                raise ValueError('Orientation keyframes must be in "calculated" format')
 
-                            prev_angle = quat
+                            orientation_parent.rotation_mode = 'QUATERNION'
+                            self.ensure_action_exists(orientation_parent)
+                            num_keyframes = len(layer['orientation']['channels'][0]['keyframes'])
+                            start_frame = layer['orientation']['channels'][0]['startFrame']
+                            rot_fcurves = [self.make_or_get_fcurve(orientation_parent.animation_data.action, 'rotation_quaternion', i) for i in range(4)]
+                            for fcurve in rot_fcurves:
+                                fcurve.keyframe_points.add(num_keyframes)
+                                for i in range(num_keyframes):
+                                    fcurve.keyframe_points[i].interpolation = 'LINEAR'
 
-                            for j in range(4):
-                                k = rot_fcurves[j].keyframe_points[i]
-                                k.co_ui = [i + start_frame, quat[j]]
-                    else:
-                        orientation_parent.rotation_mode = 'YZX'
-                        orientation_parent.rotation_euler = [
-                            radians(layer['orientation']['channels'][0]['value']),
-                            radians(layer['orientation']['channels'][2]['value']),
-                            radians(-layer['orientation']['channels'][1]['value'])
-                        ]
+                            prev_angle = None
+                            for i, (x, y, z) in enumerate(zip(*(channel['keyframes'] for channel in layer['orientation']['channels']))):
+                                angle = mathutils.Matrix.Identity(3)
+                                # Apply AE orientation
+                                angle.rotate(mathutils.Euler((radians(x), radians(z), radians(-y)), 'YZX'))
+                                # Prevent discontinuities in the rotation which can mess up motion blur.
+                                # Euler angles also have a make_compatible function, but it doesn't always work, so it's necessary to use quaternions.
+                                quat = angle.to_quaternion()
+                                if prev_angle:
+                                    quat.make_compatible(prev_angle)
 
-                    transform_target.parent = orientation_parent
-                    transform_target = orientation_parent
+                                prev_angle = quat
 
-            if 'pointOfInterest' in layer:
-                point_of_interest_parent = bpy.data.objects.new(layer['name'] + ' Point Of Interest Constraint', None)
-                point_of_interest_parent.empty_display_type = 'ARROWS'
-                added_objects.append(point_of_interest_parent)
+                                for j in range(4):
+                                    k = rot_fcurves[j].keyframe_points[i]
+                                    k.co_ui = [i + start_frame, quat[j]]
+                        else:
+                            orientation_parent.rotation_mode = 'YZX'
+                            orientation_parent.rotation_euler = [
+                                radians(layer['orientation']['channels'][0]['value']),
+                                radians(layer['orientation']['channels'][2]['value']),
+                                radians(-layer['orientation']['channels'][1]['value'])
+                            ]
 
-                point_of_interest = bpy.data.objects.new(layer['name'] + ' Point Of Interest', None)
-                added_objects.append(point_of_interest)
+                        transform_target.parent = orientation_parent
+                        transform_target = orientation_parent
 
-                self.import_property(
-                    obj=point_of_interest,
-                    data_path='location',
-                    data_index=0,
-                    prop_data=layer['pointOfInterest']['channels'][0],
-                    framerate=data['frameRate'],
-                    mul=scale_factor
-                )
-                self.import_property(
-                    obj=point_of_interest,
-                    data_path='location',
-                    data_index=2,
-                    prop_data=layer['pointOfInterest']['channels'][1],
-                    framerate=data['frameRate'],
-                    mul=-scale_factor
-                )
-                self.import_property(
-                    obj = point_of_interest,
-                    data_path='location',
-                    data_index=1,
-                    prop_data=layer['pointOfInterest']['channels'][2],
-                    framerate=data['frameRate'],
-                    mul=scale_factor
-                )
+                if 'pointOfInterest' in layer:
+                    point_of_interest_parent = bpy.data.objects.new(layer['name'] + ' Point Of Interest Constraint', None)
+                    point_of_interest_parent.empty_display_type = 'ARROWS'
+                    added_objects.append(point_of_interest_parent)
 
-                track_constraint = point_of_interest_parent.constraints.new('TRACK_TO')
-                track_constraint.owner_space = 'LOCAL'
-                track_constraint.target = point_of_interest
-                track_constraint.track_axis = 'TRACK_Y'
-                track_constraint.up_axis = 'UP_Z'
+                    point_of_interest = bpy.data.objects.new(layer['name'] + ' Point Of Interest', None)
+                    added_objects.append(point_of_interest)
 
-                transform_target.parent = point_of_interest_parent
-                transform_target = point_of_interest_parent
+                    self.import_property(
+                        obj=point_of_interest,
+                        data_path='location',
+                        data_index=0,
+                        prop_data=layer['pointOfInterest']['channels'][0],
+                        framerate=data['frameRate'],
+                        mul=scale_factor
+                    )
+                    self.import_property(
+                        obj=point_of_interest,
+                        data_path='location',
+                        data_index=2,
+                        prop_data=layer['pointOfInterest']['channels'][1],
+                        framerate=data['frameRate'],
+                        mul=-scale_factor
+                    )
+                    self.import_property(
+                        obj = point_of_interest,
+                        data_path='location',
+                        data_index=1,
+                        prop_data=layer['pointOfInterest']['channels'][2],
+                        framerate=data['frameRate'],
+                        mul=scale_factor
+                    )
 
-            should_translate = self.comp_center_to_origin and layer['parentIndex'] is None
+                    track_constraint = point_of_interest_parent.constraints.new('TRACK_TO')
+                    track_constraint.owner_space = 'LOCAL'
+                    track_constraint.target = point_of_interest
+                    track_constraint.track_axis = 'TRACK_Y'
+                    track_constraint.up_axis = 'UP_Z'
 
-            if 'position' in layer:
-                self.import_property(
-                    obj=transform_target,
-                    data_path='location',
-                    data_index=0,
-                    prop_data=layer['position']['channels'][0],
-                    framerate=data['frameRate'],
-                    mul=scale_factor,
-                    add=-data['compSize'][0] * 0.5 * self.scale_factor if should_translate else 0
-                )
-                self.import_property(
-                    obj=transform_target,
-                    data_path='location',
-                    data_index=2,
-                    prop_data=layer['position']['channels'][1],
-                    framerate=data['frameRate'],
-                    mul=-scale_factor,
-                    add=data['compSize'][1] * 0.5 * self.scale_factor if should_translate else 0
-                )
-                self.import_property(
-                    obj = transform_target,
-                    data_path='location',
-                    data_index=1,
-                    prop_data=layer['position']['channels'][2],
-                    framerate=data['frameRate'],
-                    mul=scale_factor
-                )
+                    transform_target.parent = point_of_interest_parent
+                    transform_target = point_of_interest_parent
+
+                should_translate = self.comp_center_to_origin and layer['parentIndex'] is None
+
+                if 'position' in layer:
+                    self.import_property(
+                        obj=transform_target,
+                        data_path='location',
+                        data_index=0,
+                        prop_data=layer['position']['channels'][0],
+                        framerate=data['frameRate'],
+                        mul=scale_factor,
+                        add=-data['compSize'][0] * 0.5 * self.scale_factor if should_translate else 0
+                    )
+                    self.import_property(
+                        obj=transform_target,
+                        data_path='location',
+                        data_index=2,
+                        prop_data=layer['position']['channels'][1],
+                        framerate=data['frameRate'],
+                        mul=-scale_factor,
+                        add=data['compSize'][1] * 0.5 * self.scale_factor if should_translate else 0
+                    )
+                    self.import_property(
+                        obj = transform_target,
+                        data_path='location',
+                        data_index=1,
+                        prop_data=layer['position']['channels'][2],
+                        framerate=data['frameRate'],
+                        mul=scale_factor
+                    )
 
             if layer['type'] == 'camera':
                 self.import_property(
@@ -455,9 +507,11 @@ class ImportAELayers(bpy.types.Operator, ImportHelper):
 
             imported_objects.append((transform_target, layer))
 
-        for obj, layer in imported_objects:
-            if layer['parentIndex'] is not None:
-                obj.parent = innermost_objects_by_index[layer['parentIndex']]
+        # Baked transforms include parent transforms
+        if not data['transformsBaked']:
+            for obj, layer in imported_objects:
+                if layer['parentIndex'] is not None:
+                    obj.parent = innermost_objects_by_index[layer['parentIndex']]
 
         if self.create_new_collection:
             dst_collection = bpy.data.collections.new(data['compName'])

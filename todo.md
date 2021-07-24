@@ -15,6 +15,5 @@
 - Text layers
 - Shape layers
 - Opacity
-- "Bake everything" export option
 - Layer in/out points to Disable in Viewport/Render
 - Auto-Orient

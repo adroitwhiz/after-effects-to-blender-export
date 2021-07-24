@@ -77,7 +77,17 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                             value: opts.selectionExists,
                             enabled: opts.selectionExists
                         })
-                    })
+                    }),
+                    bakeTransforms: c.Group({
+                        label: c.StaticText({
+                            text: 'Bake transforms',
+                            helpTip: "Calculate all transforms in After Effects. This may help if Blender is importing some transforms incorrectly."
+                        }),
+                        value: c.Checkbox({
+                            value: opts.bakeTransforms,
+                            enabled: opts.bakeTransforms
+                        })
+                    }),
                 }),
                 separator: c.Group({ preferredSize: ['', 3] }),
                 buttons: c.Group({
@@ -106,6 +116,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 // automatic: window.settings.timeRange.value.automatic
             },
             selectedLayersOnly: window.settings.selectedLayersOnly,
+            bakeTransforms: window.settings.bakeTransforms,
             exportButton: window.buttons.doExport,
             cancelButton: window.buttons.cancel
         };
@@ -151,7 +162,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             return {
                 savePath: controls.savePath.text,
                 timeRange: timeRange,
-                selectedLayersOnly: controls.selectedLayersOnly.value.value
+                selectedLayersOnly: controls.selectedLayersOnly.value.value,
+                bakeTransforms: controls.bakeTransforms.value.value
             };
         }
 
@@ -162,6 +174,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 if (!controls.timeRange.hasOwnProperty(button)) continue;
                 controls.timeRange[button].value = button === settings.timeRange;
             }
+            controls.bakeTransforms.value.value = settings.bakeTransforms;
         }
 
         controls.saveBrowse.onClick = function() {
@@ -225,13 +238,18 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 layersToExport.push(layer);
                 layerIndicesMarkedForExport[layer.index] = true;
 
-                var parent = layer.parent;
-                while (parent) {
-                    if (!(parent.index in layerIndicesMarkedForExport)) {
-                        layersToExport.push(parent);
-                        layerIndicesMarkedForExport[parent.index] = true;
+                // If not baking transforms (also baking parents' transforms into child layers),
+                // make sure to export all the selected layers' parents as well so that the children
+                // can have the parent transforms applied to them
+                if (!settings.bakeTransforms) {
+                    var parent = layer.parent;
+                    while (parent) {
+                        if (!(parent.index in layerIndicesMarkedForExport)) {
+                            layersToExport.push(parent);
+                            layerIndicesMarkedForExport[parent.index] = true;
+                        }
+                        parent = parent.parent;
                     }
-                    parent = parent.parent;
                 }
             }
         } else {
@@ -248,6 +266,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             compName: activeComp.name,
             compPixelAspect: activeComp.compPixelAspect,
             frameRate: activeComp.frameRate,
+            transformsBaked: settings.bakeTransforms,
             version: fileVersion
         };
 
@@ -261,6 +280,100 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             }
 
             throw new Error('Could not un-enum ' + val);
+        }
+
+        function startAndEndFrame(layer) {
+            var startTime, duration;
+            switch (settings.timeRange) {
+                case 'workArea':
+                    startTime = activeComp.workAreaStart;
+                    duration = activeComp.workAreaDuration;
+                    break;
+                case 'layerDuration':
+                    startTime = layer.inPoint;
+                    duration = layer.outPoint - layer.inPoint;
+                    break;
+                case 'wholeComp':
+                default:
+                    startTime = 0;
+                    duration = activeComp.duration;
+                    break;
+            }
+            // avoid floating point weirdness by rounding, just in case
+            var startFrame = Math.floor(startTime * activeComp.frameRate);
+            var endFrame = startFrame + Math.ceil(duration * activeComp.frameRate);
+            return [startFrame, endFrame];
+        }
+
+        function escapeStringForLiteral(str) {
+            return str.replace(/(\\|")/g, '\\$1');
+        }
+
+        if (settings.bakeTransforms) {
+            // Adding a layer deselects all others, so save the original selection here.
+            var selectedLayers = [];
+            for (var i = 0; i < activeComp.selectedLayers.length; i++) {
+                selectedLayers.push(activeComp.selectedLayers[i]);
+            }
+
+            // `toWorld` only works inside expressions, so add a null object whose expression we will set and then evaluate
+            // using `valueAtTime`.
+            var evaluator = activeComp.layers.addNull();
+            // Move the evaluator layer to the bottom to avoid messing up expressions which rely on layer indices
+            evaluator.moveToEnd();
+            // Adding a new effect invalidates references to all other effects in the stack, so create all effects first
+            // before obtaining references to them. I thought JS was a garbage-collected language, Adobe!
+            for (var i = 0; i < 4; i++) {
+                evaluator.property("Effects").addProperty("ADBE Point3D Control");
+            }
+            var evalPoint1 = evaluator.property("Effects").property(1);
+            var evalPoint2 = evaluator.property("Effects").property(2);
+            var evalPoint3 = evaluator.property("Effects").property(3);
+            var evalPoint4 = evaluator.property("Effects").property(4);
+        }
+
+        // @include 'lib/affine.js'
+
+        function exportBakedTransform(layer) {
+            evalPoint1.property(1).expression = "thisComp.layer(\"" + escapeStringForLiteral(layer.name) + "\").toWorld([0, 0, 0])";
+            evalPoint2.property(1).expression = "thisComp.layer(\"" + escapeStringForLiteral(layer.name) + "\").toWorld([1, 0, 0])";
+            evalPoint3.property(1).expression = "thisComp.layer(\"" + escapeStringForLiteral(layer.name) + "\").toWorld([0, 1, 0])";
+            evalPoint4.property(1).expression = "thisComp.layer(\"" + escapeStringForLiteral(layer.name) + "\").toWorld([0, 0, 1])";
+
+            // Bake keyframe data
+            var startEnd = startAndEndFrame(layer);
+            var startFrame = startEnd[0];
+            var endFrame = startEnd[1];
+
+            var keyframes = [];
+
+            for (var i = startFrame; i < endFrame; i++) {
+                var time =  i / activeComp.frameRate;
+                var point1Val = evalPoint1.property(1).valueAtTime(time, false /* preExpression */);
+                var point2Val = evalPoint2.property(1).valueAtTime(time, false /* preExpression */);
+                var point3Val = evalPoint3.property(1).valueAtTime(time, false /* preExpression */);
+                var point4Val = evalPoint4.property(1).valueAtTime(time, false /* preExpression */);
+                var matrix = pointsToAffineMatrix(
+                    [
+                        [0, 0, 0],
+                        [1, 0, 0],
+                        [0, 1, 0],
+                        [0, 0, 1]
+                    ],
+                    [
+                        point1Val,
+                        point2Val,
+                        point3Val,
+                        point4Val
+                    ]
+                );
+                keyframes.push(matrix);
+            }
+
+            return {
+                startFrame: startFrame,
+                keyframes: keyframes
+            }
         }
 
         function exportProperty(prop, layer, exportedProp, channelOffset) {
@@ -332,25 +445,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                     }
                 } else {
                     // Bake keyframe data
-                    var startTime, duration;
-                    switch (settings.timeRange) {
-                        case 'workArea':
-                            startTime = activeComp.workAreaStart;
-                            duration = activeComp.workAreaDuration;
-                            break;
-                        case 'layerDuration':
-                            startTime = layer.inPoint;
-                            duration = layer.outPoint - layer.inPoint;
-                            break;
-                        case 'wholeComp':
-                        default:
-                            startTime = 0;
-                            duration = activeComp.duration;
-                            break;
-                    }
-                    // avoid floating point weirdness by rounding, just in case
-                    var startFrame = Math.floor(startTime * activeComp.frameRate);
-                    var endFrame = startFrame + Math.ceil(duration * activeComp.frameRate);
+                    var startEnd = startAndEndFrame(layer);
+                    var startFrame = startEnd[0];
+                    var endFrame = startEnd[1];
 
                     for (var i = 0; i < numDimensions; i++) {
                         exportedProp.channels[i + channelOffset].isKeyframed = true;
@@ -413,13 +510,18 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 name: layer.name,
                 type: layerType,
                 index: layer.index,
-                parentIndex: layer.parent ? layer.parent.index : null,
-                position: exportProperty(layer.position, layer),
-                rotationX: exportProperty(layer.xRotation, layer),
-                rotationY: exportProperty(layer.yRotation, layer),
-                rotationZ: exportProperty(layer.rotation, layer),
-                orientation: exportProperty(layer.orientation, layer),
+                parentIndex: layer.parent ? layer.parent.index : null
             };
+
+            if (settings.bakeTransforms) {
+                exportedObject.transform = exportBakedTransform(layer);
+            } else {
+                exportedObject.position = exportProperty(layer.position, layer);
+                exportedObject.rotationX = exportProperty(layer.xRotation, layer);
+                exportedObject.rotationY = exportProperty(layer.yRotation, layer);
+                exportedObject.rotationZ = exportProperty(layer.rotation, layer);
+                exportedObject.orientation = exportProperty(layer.orientation, layer);
+            }
 
             if (layer instanceof CameraLayer) {
                 exportedObject.zoom = exportProperty(layer.zoom, layer);
@@ -427,7 +529,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
             // The "Point of Interest" property exists and is not hidden, meaning it's taking effect
             // Interestingly, `pointOfInterest.canSetExpression` is always true for other layer types
-            if ((layer instanceof CameraLayer || layer instanceof LightLayer) && layer.pointOfInterest.canSetExpression) {
+            if (
+                (layer instanceof CameraLayer || layer instanceof LightLayer) &&
+                layer.pointOfInterest.canSetExpression &&
+                !settings.bakeTransforms
+            ) {
                 exportedObject.pointOfInterest = exportProperty(layer.pointOfInterest, layer);
             }
 
@@ -446,8 +552,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 }
                 exportedObject.source = exportedSources.indexOf(layer.source);
 
-                exportedObject.anchorPoint = exportProperty(layer.anchorPoint, layer);
-                exportedObject.scale = exportProperty(layer.scale, layer);
+                if (!settings.bakeTransforms) {
+                    exportedObject.anchorPoint = exportProperty(layer.anchorPoint, layer);
+                    exportedObject.scale = exportProperty(layer.scale, layer);
+                }
                 exportedObject.opacity = exportProperty(layer.opacity, layer);
                 exportedObject.nullLayer = layer.nullLayer;
             }
@@ -455,14 +563,23 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             return exportedObject;
         }
 
-        for (var j = 0; j < layersToExport.length; j++) {
-            try {
-                var exportedLayer = exportLayer(layersToExport[j]);
-                json.layers.push(exportedLayer);
-            } catch (err) {
-                // Give specific information on what layer is causing the problem
-                // This allows the user to fix it by deselecting the layer, and makes debugging easier
-                throw new Error('Error exporting layer "' + layersToExport[j].name + '"\nOn line ' + err.line + ': ' + err.message);
+        try {
+            for (var j = 0; j < layersToExport.length; j++) {
+                try {
+                    var exportedLayer = exportLayer(layersToExport[j]);
+                    json.layers.push(exportedLayer);
+                } catch (err) {
+                    // Give specific information on what layer is causing the problem
+                    // This allows the user to fix it by deselecting the layer, and makes debugging easier
+                    throw new Error('Error exporting layer "' + layersToExport[j].name + '"\nOn line ' + err.line + ': ' + err.message);
+                }
+            }
+        } finally {
+            if (settings.bakeTransforms) {
+                evaluator.remove();
+                for (var i = 0; i < selectedLayers.length; i++) {
+                    selectedLayers[i].selected = true;
+                }
             }
         }
 
