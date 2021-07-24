@@ -262,10 +262,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         var json = {
             layers: [],
             sources: [],
-            compSize: [activeComp.width, activeComp.height],
-            compName: activeComp.name,
-            compPixelAspect: activeComp.compPixelAspect,
-            frameRate: activeComp.frameRate,
+            comp: {
+                width: activeComp.width,
+                height: activeComp.height,
+                name: activeComp.name,
+                pixelAspect: activeComp.pixelAspect,
+                frameRate: activeComp.frameRate,
+            },
             transformsBaked: settings.bakeTransforms,
             version: fileVersion
         };
