@@ -12,7 +12,9 @@ bl_info = {
     "author": "adroitwhiz",
     "version": (0, 3),
     "blender": (2, 90, 0),
-    "category": "Import-Export"
+    "category": "Import-Export",
+    "wiki_url": "https://github.com/adroitwhiz/after-effects-to-blender-export/",
+    "tracker_url": "https://github.com/adroitwhiz/after-effects-to-blender-export/issues/new/"
 }
 
 class ImportAEComp(bpy.types.Operator, ImportHelper):
