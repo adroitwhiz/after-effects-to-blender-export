@@ -430,6 +430,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         // @include 'lib/affine.js'
 
         function exportBakedTransform(layer) {
+            // It's possible to construct a 3D affine transform matrix given a mapping from 4 source points to 4 destination points.
+            // The source points are the arguments of the toWorld functions, and the destination points are their results.
+            // We calculate this affine transform matrix once per frame then decompose it on the Blender side.
             evalPoint1.property(1).expression = "thisComp.layer(\"" + escapeStringForLiteral(layer.name) + "\").toWorld([0, 0, 0])";
             evalPoint2.property(1).expression = "thisComp.layer(\"" + escapeStringForLiteral(layer.name) + "\").toWorld([1, 0, 0])";
             evalPoint3.property(1).expression = "thisComp.layer(\"" + escapeStringForLiteral(layer.name) + "\").toWorld([0, 1, 0])";
