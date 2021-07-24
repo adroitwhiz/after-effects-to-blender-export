@@ -277,6 +277,8 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                 pre_quat = mathutils.Quaternion((1.0, 0.0, 0.0), radians(-90.0))
                 post_quat = mathutils.Quaternion((1.0, 0.0, 0.0), radians(180.0 if layer['type'] == 'camera' else 90.0))
                 def transform(loc, rot, scale):
+                    if self.comp_center_to_origin:
+                        loc -= mathutils.Vector((data['comp']['width'] * 0.5, data['comp']['height'] * 0.5, 0.0))
                     loc = mathutils.Vector((loc[0] * scale_factor, loc[2] * scale_factor, -loc[1] * scale_factor))
                     scale = mathutils.Vector((scale[0], scale[2], scale[1]))
                     rot = pre_quat @ rot @ post_quat
