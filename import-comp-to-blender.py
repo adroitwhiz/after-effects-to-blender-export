@@ -517,18 +517,18 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
 
         if self.create_new_collection:
             dst_collection = bpy.data.collections.new(data['comp']['name'])
-            bpy.context.collection.children.link(dst_collection)
+            context.collection.children.link(dst_collection)
         else:
-            dst_collection = bpy.context.collection
+            dst_collection = context.collection
 
         for obj in added_objects:
             dst_collection.objects.link(obj)
             obj.select_set(True)
 
-        bpy.context.view_layer.update()
+        context.view_layer.update()
 
         if self.use_comp_resolution:
-            render_settings = bpy.context.scene.render
+            render_settings = context.scene.render
             render_settings.resolution_x = data['comp']['width']
             render_settings.resolution_y = data['comp']['width']
 
