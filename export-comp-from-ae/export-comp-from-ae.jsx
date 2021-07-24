@@ -187,7 +187,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 cb(getSettings());
                 writeSettingsFile(getSettings(), settingsVersion);
             } catch (err) {
-                alert(err.message, 'Error');
+                showBugReportWindow(err);
             }
             window.close();
         };
@@ -195,6 +195,50 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         applySettings(readSettingsFile(settingsVersion));
 
         return window;
+    }
+
+    function showBugReportWindow(err) {
+        var c = controlFunctions;
+        var resourceString = createResourceString(
+            c.Dialog({
+                text: 'Error',
+                header: c.StaticText({
+                    text: 'The script has encountered an error. You can report it and paste the error message below into the report:',
+                    alignment: ['left', 'top']
+                }),
+                errorInfo: c.EditText({
+                    alignment: ['fill', 'fill'],
+                    minimumSize: [400, 100],
+                    properties: {multiline: true}
+                }),
+                separator: c.Group({ preferredSize: ['', 3] }),
+                buttons: c.Group({
+                    alignment: 'right',
+                    doExport: c.Button({
+                        properties: { name: 'report' },
+                        text: 'Report Bug'
+                    }),
+                    close: c.Button({
+                        properties: { name: 'close' },
+                        text: 'Close'
+                    })
+                })
+            })
+        );
+
+        var window = new Window(resourceString, 'Error', undefined, {resizeable: false});
+        window.errorInfo.text = err.message;
+
+        window.buttons.report.onClick = function() {
+            var url = 'https://github.com/adroitwhiz/after-effects-to-blender-export/issues/new?assignees=&labels=bug%2C+export&template=issue-exporting-from-after-effects.md';
+            system.callSystem(($.os.indexOf('Win') !== -1 ? 'explorer' : 'open') + ' "' + url + '"');
+        }
+
+        window.buttons.close.onClick = function() {
+            window.close();
+        };
+
+        window.show();
     }
 
     function getCompositionViewer() {
