@@ -697,15 +697,15 @@ function writeSettingsFile(settings, version) {
 }
 
 
-    var fileVersion = 1;
-    var settingsVersion = '0.1';
+    var fileVersion = 2;
+    var settingsVersion = '0.2';
     var settingsFilePath = Folder.userData.fullName + '/cam-export-settings.json';
 
-    function showDialog(cb) {
+    function showDialog(cb, opts) {
         var c = controlFunctions;
         var resourceString = createResourceString(
             c.Dialog({
-                text: 'AE Camera Export',
+                text: 'AE to Blender Export',
                 settings: c.Group({
                     orientation: 'column',
                     alignment: ['fill', 'fill'],
@@ -733,21 +733,34 @@ function writeSettingsFile(settings, version) {
                             workArea: c.RadioButton({
                                 text: 'Work area'
                             }),
-                            cameraDuration: c.RadioButton({
-                                text: 'Camera layer duration'
+                            layerDuration: c.RadioButton({
+                                text: 'Layer duration'
                             }),
-                            // TODO: automatically detect per camera and channel whether to animate and when
+                            // TODO: automatically detect per layer and channel whether to animate and when
                             /*automatic: c.RadioButton({
                                 text: 'Automatic'
                             })*/
                         })
                     }),
-                    centeredCamera: c.Group({
-                        label: c.StaticText({text: 'Comp camera is centered'}),
+                    selectedLayersOnly: c.Group({
+                        label: c.StaticText({
+                            text: 'Export selected layers only'
+                        }),
                         value: c.Checkbox({
-                            value: false
+                            value: opts.selectionExists,
+                            enabled: opts.selectionExists
                         })
-                    })
+                    }),
+                    bakeTransforms: c.Group({
+                        label: c.StaticText({
+                            text: 'Bake transforms',
+                            helpTip: "Calculate all transforms in After Effects. This may help if Blender is importing some transforms incorrectly."
+                        }),
+                        value: c.Checkbox({
+                            value: opts.bakeTransforms,
+                            enabled: opts.bakeTransforms
+                        })
+                    }),
                 }),
                 separator: c.Group({ preferredSize: ['', 3] }),
                 buttons: c.Group({
@@ -764,7 +777,7 @@ function writeSettingsFile(settings, version) {
             })
         );
 
-        var window = new Window(resourceString, 'Camera Export', undefined, {resizeable: false});
+        var window = new Window(resourceString, 'Blender Export', undefined, {resizeable: false});
 
         var controls = {
             savePath: window.settings.saveDestination.savePath,
@@ -772,10 +785,11 @@ function writeSettingsFile(settings, version) {
             timeRange: {
                 wholeComp: window.settings.timeRange.value.wholeComp,
                 workArea: window.settings.timeRange.value.workArea,
-                cameraDuration: window.settings.timeRange.value.cameraDuration,
+                layerDuration: window.settings.timeRange.value.layerDuration,
                 // automatic: window.settings.timeRange.value.automatic
             },
-            centeredCamera: window.settings.centeredCamera,
+            selectedLayersOnly: window.settings.selectedLayersOnly,
+            bakeTransforms: window.settings.bakeTransforms,
             exportButton: window.buttons.doExport,
             cancelButton: window.buttons.cancel
         };
@@ -821,7 +835,8 @@ function writeSettingsFile(settings, version) {
             return {
                 savePath: controls.savePath.text,
                 timeRange: timeRange,
-                centeredCamera: controls.centeredCamera.value.value,
+                selectedLayersOnly: controls.selectedLayersOnly.value.value,
+                bakeTransforms: controls.bakeTransforms.value.value
             };
         }
 
@@ -832,11 +847,11 @@ function writeSettingsFile(settings, version) {
                 if (!controls.timeRange.hasOwnProperty(button)) continue;
                 controls.timeRange[button].value = button === settings.timeRange;
             }
-            controls.centeredCamera.value.value = settings.centeredCamera;
+            controls.bakeTransforms.value.value = settings.bakeTransforms;
         }
 
         controls.saveBrowse.onClick = function() {
-            var savePath = File.saveDialog('Choose the path and name for the camera data file', 'Camera data:*.json').fsName;
+            var savePath = File.saveDialog('Choose the path and name for the layer data file', 'Layer data:*.json').fsName;
             controls.savePath.text = savePath;
         }
 
@@ -845,7 +860,7 @@ function writeSettingsFile(settings, version) {
                 cb(getSettings());
                 writeSettingsFile(getSettings(), settingsVersion);
             } catch (err) {
-                alert(err);
+                showBugReportWindow(err);
             }
             window.close();
         };
@@ -853,6 +868,50 @@ function writeSettingsFile(settings, version) {
         applySettings(readSettingsFile(settingsVersion));
 
         return window;
+    }
+
+    function showBugReportWindow(err) {
+        var c = controlFunctions;
+        var resourceString = createResourceString(
+            c.Dialog({
+                text: 'Error',
+                header: c.StaticText({
+                    text: 'The script has encountered an error. You can report it and paste the error message below into the report:',
+                    alignment: ['left', 'top']
+                }),
+                errorInfo: c.EditText({
+                    alignment: ['fill', 'fill'],
+                    minimumSize: [400, 100],
+                    properties: {multiline: true}
+                }),
+                separator: c.Group({ preferredSize: ['', 3] }),
+                buttons: c.Group({
+                    alignment: 'right',
+                    doExport: c.Button({
+                        properties: { name: 'report' },
+                        text: 'Report Bug'
+                    }),
+                    close: c.Button({
+                        properties: { name: 'close' },
+                        text: 'Close'
+                    })
+                })
+            })
+        );
+
+        var window = new Window(resourceString, 'Error', undefined, {resizeable: false});
+        window.errorInfo.text = err.message;
+
+        window.buttons.report.onClick = function() {
+            var url = 'https://github.com/adroitwhiz/after-effects-to-blender-export/issues/new?assignees=&labels=bug%2C+export&template=issue-exporting-from-after-effects.md';
+            system.callSystem(($.os.indexOf('Win') !== -1 ? 'explorer' : 'open') + ' "' + url + '"');
+        }
+
+        window.buttons.close.onClick = function() {
+            window.close();
+        };
+
+        window.show();
     }
 
     function getCompositionViewer() {
@@ -869,93 +928,454 @@ function writeSettingsFile(settings, version) {
         return activeViewer;
     }
 
-    function main(settings) {
+    function main() {
         getCompositionViewer().setActive();
         var activeComp = app.project.activeItem;
 
-        var selection = activeComp.selectedLayers;
+        var d = showDialog(
+            function(settings) {
+                runExport(settings, {
+                    activeComp: activeComp
+                })
+            },
+            {
+                selectionExists: activeComp.selectedLayers.length > 0
+            }
+        );
+        d.window.show();
+    }
+
+    function runExport(settings, opts) {
+        var activeComp = opts.activeComp;
+        var layersToExport = [];
+        if (settings.selectedLayersOnly) {
+            var layerIndicesMarkedForExport = {};
+            for (var i = 0; i < activeComp.selectedLayers.length; i++) {
+                var layer = activeComp.selectedLayers[i];
+                layersToExport.push(layer);
+                layerIndicesMarkedForExport[layer.index] = true;
+
+                // If not baking transforms (also baking parents' transforms into child layers),
+                // make sure to export all the selected layers' parents as well so that the children
+                // can have the parent transforms applied to them
+                if (!settings.bakeTransforms) {
+                    var parent = layer.parent;
+                    while (parent) {
+                        if (!(parent.index in layerIndicesMarkedForExport)) {
+                            layersToExport.push(parent);
+                            layerIndicesMarkedForExport[parent.index] = true;
+                        }
+                        parent = parent.parent;
+                    }
+                }
+            }
+        } else {
+            for (var i = 1; i <= activeComp.layers.length; i++) {
+                var layer = activeComp.layers[i];
+                layersToExport.push(layer);
+            }
+        }
 
         var json = {
-            cameras: [],
-            compSize: [activeComp.width, activeComp.height],
-            frameRate: activeComp.frameRate,
+            layers: [],
+            sources: [],
+            comp: {
+                width: activeComp.width,
+                height: activeComp.height,
+                name: activeComp.name,
+                pixelAspect: activeComp.pixelAspect,
+                frameRate: activeComp.frameRate,
+                workArea: [activeComp.workAreaStart, activeComp.workAreaDuration - activeComp.workAreaStart]
+            },
+            transformsBaked: settings.bakeTransforms,
             version: fileVersion
         };
 
-        function zoomToAngle(zoom) {
-            return Math.atan((activeComp.width/zoom)/2)*(360/Math.PI);
+        var exportedSources = [];
+
+        function unenum(val) {
+            switch (val) {
+                case KeyframeInterpolationType.LINEAR: return 'linear';
+                case KeyframeInterpolationType.BEZIER: return 'bezier';
+                case KeyframeInterpolationType.HOLD: return 'hold';
+            }
+
+            throw new Error('Could not un-enum ' + val);
         }
 
-        var evaluator = activeComp.layers.addNull();
-        try {
-            evaluator.threeDLayer = true;
+        function startAndEndFrame(layer) {
+            var startTime, duration;
+            switch (settings.timeRange) {
+                case 'workArea':
+                    startTime = activeComp.workAreaStart;
+                    duration = activeComp.workAreaDuration;
+                    break;
+                case 'layerDuration':
+                    startTime = layer.inPoint;
+                    duration = layer.outPoint - layer.inPoint;
+                    break;
+                case 'wholeComp':
+                default:
+                    startTime = 0;
+                    duration = activeComp.duration;
+                    break;
+            }
+            // avoid floating point weirdness by rounding, just in case
+            var startFrame = Math.floor(startTime * activeComp.frameRate);
+            var endFrame = startFrame + Math.ceil(duration * activeComp.frameRate);
+            return [startFrame, endFrame];
+        }
 
-            for (var j = 0; j < selection.length; j++) {
-                if (!(selection[j] instanceof CameraLayer)) continue;
-                var AECamera = selection[j];
+        function escapeStringForLiteral(str) {
+            return str.replace(/(\\|")/g, '\\$1');
+        }
 
-                // avoid floating point weirdness by rounding, just in case
-                var startTime, duration;
-                switch (settings.timeRange) {
-                    case 'workArea':
-                        startTime = activeComp.workAreaStart;
-                        duration = activeComp.workAreaDuration;
-                        break;
-                    case 'cameraDuration':
-                        startTime = AECamera.inPoint;
-                        duration = AECamera.outPoint - AECamera.inPoint;
-                        break;
-                    case 'wholeComp':
-                    default:
-                        startTime = 0;
-                        duration = activeComp.duration;
-                        break;
+        if (settings.bakeTransforms) {
+            // Adding a layer deselects all others, so save the original selection here.
+            var selectedLayers = [];
+            for (var i = 0; i < activeComp.selectedLayers.length; i++) {
+                selectedLayers.push(activeComp.selectedLayers[i]);
+            }
+
+            // `toWorld` only works inside expressions, so add a null object whose expression we will set and then evaluate
+            // using `valueAtTime`.
+            var evaluator = activeComp.layers.addNull();
+            // Move the evaluator layer to the bottom to avoid messing up expressions which rely on layer indices
+            evaluator.moveToEnd();
+            // Adding a new effect invalidates references to all other effects in the stack, so create all effects first
+            // before obtaining references to them. I thought JS was a garbage-collected language, Adobe!
+            for (var i = 0; i < 4; i++) {
+                evaluator.property("Effects").addProperty("ADBE Point3D Control");
+            }
+            var evalPoint1 = evaluator.property("Effects").property(1);
+            var evalPoint2 = evaluator.property("Effects").property(2);
+            var evalPoint3 = evaluator.property("Effects").property(3);
+            var evalPoint4 = evaluator.property("Effects").property(4);
+        }
+
+        // Algorithm adapted from https://stackoverflow.com/a/56228667/3128248
+var pointsToAffineMatrix = (function() {
+    function transpose(arr) {
+        var outArr = [];
+        for (var i = 0; i < arr[0].length; i++) {
+            outArr.push([]);
+        }
+        for (var i = 0; i < arr.length; i++) {
+            for (var j = 0; j < arr[i].length; j++) {
+                outArr[j].push(arr[i][j]);
+            }
+        }
+        return outArr;
+    }
+
+    // Adapted from gl-matrix
+    // https://github.com/toji/gl-matrix/blob/d30bf3ba16449c2228a56754822059dd79d196a4/src/mat4.js#L416
+    function det4x4(a) {
+        var a00 = a[0][0],
+            a01 = a[0][1],
+            a02 = a[0][2],
+            a03 = a[0][3];
+        var a10 = a[1][0],
+            a11 = a[1][1],
+            a12 = a[1][2],
+            a13 = a[1][3];
+        var a20 = a[2][0],
+            a21 = a[2][1],
+            a22 = a[2][2],
+            a23 = a[2][3];
+        var a30 = a[3][0],
+            a31 = a[3][1],
+            a32 = a[3][2],
+            a33 = a[3][3];
+
+        var b0 = a00 * a11 - a01 * a10;
+        var b1 = a00 * a12 - a02 * a10;
+        var b2 = a01 * a12 - a02 * a11;
+        var b3 = a20 * a31 - a21 * a30;
+        var b4 = a20 * a32 - a22 * a30;
+        var b5 = a21 * a32 - a22 * a31;
+        var b6 = a00 * b5 - a01 * b4 + a02 * b3;
+        var b7 = a10 * b5 - a11 * b4 + a12 * b3;
+        var b8 = a20 * b2 - a21 * b1 + a22 * b0;
+        var b9 = a30 * b2 - a31 * b1 + a32 * b0;
+
+        // Calculate the determinant
+        return a13 * b6 - a03 * b7 + a33 * b8 - a23 * b9;
+    }
+
+    function entry(row, delIndex, B) {
+        var newMatrix = [row];
+        for (var i = 0; i < B.length; i++) {
+            if (i !== delIndex) newMatrix.push(B[i]);
+        }
+        return det4x4(newMatrix);
+    }
+
+    return function(ins, out) {
+        var B = transpose(ins);
+        B.push([1, 1, 1, 1]);
+
+        var D = 1 / det4x4(B);
+
+        var transposedOut = transpose(out);
+        var M = [];
+        for (var i = 0; i < transposedOut.length; i++) {
+            for (var j = 0; j < 4; j++) {
+                M.push((j % 2 === 0 ? 1 : -1) * D * entry(transposedOut[i], j, B));
+            }
+        }
+        return M;
+    }
+})();
+
+
+        function exportBakedTransform(layer) {
+            evalPoint1.property(1).expression = "thisComp.layer(\"" + escapeStringForLiteral(layer.name) + "\").toWorld([0, 0, 0])";
+            evalPoint2.property(1).expression = "thisComp.layer(\"" + escapeStringForLiteral(layer.name) + "\").toWorld([1, 0, 0])";
+            evalPoint3.property(1).expression = "thisComp.layer(\"" + escapeStringForLiteral(layer.name) + "\").toWorld([0, 1, 0])";
+            evalPoint4.property(1).expression = "thisComp.layer(\"" + escapeStringForLiteral(layer.name) + "\").toWorld([0, 0, 1])";
+
+            // Bake keyframe data
+            var startEnd = startAndEndFrame(layer);
+            var startFrame = startEnd[0];
+            var endFrame = startEnd[1];
+
+            var keyframes = [];
+
+            for (var i = startFrame; i < endFrame; i++) {
+                var time =  i / activeComp.frameRate;
+                var point1Val = evalPoint1.property(1).valueAtTime(time, false /* preExpression */);
+                var point2Val = evalPoint2.property(1).valueAtTime(time, false /* preExpression */);
+                var point3Val = evalPoint3.property(1).valueAtTime(time, false /* preExpression */);
+                var point4Val = evalPoint4.property(1).valueAtTime(time, false /* preExpression */);
+                var matrix = pointsToAffineMatrix(
+                    [
+                        [0, 0, 0],
+                        [1, 0, 0],
+                        [0, 1, 0],
+                        [0, 0, 1]
+                    ],
+                    [
+                        point1Val,
+                        point2Val,
+                        point3Val,
+                        point4Val
+                    ]
+                );
+                keyframes.push(matrix);
+            }
+
+            return {
+                startFrame: startFrame,
+                keyframes: keyframes
+            }
+        }
+
+        function exportProperty(prop, layer, exportedProp, channelOffset) {
+            var valType = prop.propertyValueType;
+            // The ternary conditional operator is left-associative in ExtendScript. HATE. HATE. HATE. HATE. HATE. HATE. HATE. HATE.
+            var numDimensions = (valType === PropertyValueType.ThreeD || valType === PropertyValueType.ThreeD_SPATIAL ? 3 :
+                (valType === PropertyValueType.TwoD || valType === PropertyValueType.TwoD_SPATIAL ? 2 :
+                    1));
+
+            if (prop.isSeparationFollower && numDimensions > 1) {
+                throw new Error('Separation follower cannot have more than 1 dimension');
+            }
+
+            if (typeof exportedProp === 'undefined') {
+                exportedProp = {numDimensions: numDimensions, channels: []};
+                for (var i = 0; i < numDimensions; i++) {
+                    exportedProp.channels.push({});
                 }
-                var startFrame = Math.round(startTime * activeComp.frameRate);
-                var endFrame = startFrame + Math.round(duration * activeComp.frameRate);
+            }
 
-                var camera = {
-                    name: AECamera.name,
-                    position: {startFrame: startFrame, keyframes: []},
-                    rotation: {startFrame: startFrame, keyframes: []}
-                };
+            if (prop.isSeparationLeader && prop.dimensionsSeparated) {
+                for (var i = 0; i < numDimensions; i++) {
+                    var dimProp = prop.getSeparationFollower(i);
+                    exportProperty(dimProp, layer, exportedProp, i);
+                }
 
-                json.cameras.push(camera);
+                return exportedProp;
+            }
 
-                evaluator.transform.position.expression = "thisComp.layer(\"" + camera.name + "\").toWorld([0, 0, 0])";
-                evaluator.transform.orientation.expression = "var C = thisComp.layer(\"" + camera.name + "\");\
-                    u = normalize(C.toWorldVec([1,0,0]));\
-                    v = normalize(C.toWorldVec([0,1,0]));\
-                    w = normalize(C.toWorldVec([0,0,1]));\
-                    sinb = clamp(w[0],-1,1);\
-                    b = Math.asin(sinb);\
-                    cosb = Math.cos(b);\
-                    if (Math.abs(cosb) > .0005){\
-                    c = -Math.atan2(v[0],u[0]);\
-                    a = -Math.atan2(w[1],w[2]);\
-                    }else{\
-                    a = Math.atan2(u[1],v[1]);\
-                    c = 0;\
-                    }\
-                    [radiansToDegrees(a),radiansToDegrees(b),radiansToDegrees(c)]";
+            if (typeof channelOffset === 'undefined') channelOffset = 0;
 
-                var fovVaries = AECamera.zoom.isTimeVarying;
-                camera.fov = fovVaries ? {startFrame: startFrame, keyframes: []} : zoomToAngle(AECamera.zoom.value)
-
-                for (var i = startFrame; i < endFrame; i++) {
-                    var time =  i / activeComp.frameRate;
-                    var posVal = evaluator.transform.position.valueAtTime(time, false);
-                    if (settings.centeredCamera) {
-                        posVal[0] -= activeComp.width / 2;
-                        posVal[1] -= activeComp.height / 2;
+            if (prop.isTimeVarying) {
+                if (
+                    (!prop.expressionEnabled) &&
+                    (valType === PropertyValueType.ThreeD ||
+                    valType === PropertyValueType.TwoD ||
+                    valType === PropertyValueType.OneD)
+                ) {
+                    // Export keyframe Bezier data directly
+                    for (var i = 0; i < numDimensions; i++) {
+                        exportedProp.channels[i + channelOffset].isKeyframed = true;
+                        exportedProp.channels[i + channelOffset].keyframesFormat = 'bezier';
+                        exportedProp.channels[i + channelOffset].keyframes = [];
                     }
-                    camera.position.keyframes.push(posVal);
-                    camera.rotation.keyframes.push(evaluator.transform.orientation.valueAtTime(time, false));
-                    if (fovVaries) camera.fov.keyframes.push(zoomToAngle(AECamera.zoom.valueAtTime(time, false)));
+
+                    for (var keyIndex = 1; keyIndex <= prop.numKeys; keyIndex++) {
+                        var time = prop.keyTime(keyIndex);
+                        var value = prop.keyValue(keyIndex);
+                        var easeIn = prop.keyInTemporalEase(keyIndex);
+                        var easeOut = prop.keyOutTemporalEase(keyIndex);
+                        var interpolationIn = unenum(prop.keyInInterpolationType(keyIndex));
+                        var interpolationOut = unenum(prop.keyOutInterpolationType(keyIndex));
+                        for (var i = 0; i < numDimensions; i++) {
+                            exportedProp.channels[i + channelOffset].keyframes.push({
+                                value: Array.isArray(value) ? value[i] : value,
+                                easeIn: {
+                                    speed: easeIn[i].speed,
+                                    influence: easeIn[i].influence
+                                },
+                                easeOut: {
+                                    speed: easeOut[i].speed,
+                                    influence: easeOut[i].influence
+                                },
+                                time: prop.keyTime(keyIndex),
+                                interpolationIn: interpolationIn,
+                                interpolationOut: interpolationOut
+                            })
+                        }
+                    }
+                } else {
+                    // Bake keyframe data
+                    var startEnd = startAndEndFrame(layer);
+                    var startFrame = startEnd[0];
+                    var endFrame = startEnd[1];
+
+                    for (var i = 0; i < numDimensions; i++) {
+                        exportedProp.channels[i + channelOffset].isKeyframed = true;
+                        exportedProp.channels[i + channelOffset].keyframesFormat = 'calculated';
+                        exportedProp.channels[i + channelOffset].startFrame = startFrame;
+                        exportedProp.channels[i + channelOffset].keyframes = [];
+                    }
+
+                    for (var i = startFrame; i < endFrame; i++) {
+                        var time =  i / activeComp.frameRate;
+                        var propVal = prop.valueAtTime(time, false /* preExpression */);
+                        for (var j = 0; j < numDimensions; j++) {
+                            exportedProp.channels[j].keyframes.push(Array.isArray(propVal) ? propVal[j] : propVal);
+                        }
+                    }
+                }
+            } else {
+                for (var i = 0; i < numDimensions; i++) {
+                    exportedProp.channels[i + channelOffset].isKeyframed = false;
+                    exportedProp.channels[i + channelOffset].value = Array.isArray(prop.value) ? prop.value[i] : prop.value;
+                }
+            }
+
+            return exportedProp;
+        }
+
+        function exportSource(source) {
+            var exportedSource = {
+                height: source.height,
+                width: source.width,
+                name: source.name
+            };
+            if (source instanceof FootageItem) {
+                if (source.mainSource instanceof SolidSource) {
+                    exportedSource.type = 'solid';
+                    exportedSource.color = source.mainSource.color;
+                } else if (source.mainSource instanceof FileSource) {
+                    exportedSource.type = 'file';
+                    exportedSource.file = source.mainSource.file.absoluteURI;
+                } else {
+                    exportedSource.type = 'unknown';
+                }
+            } else {
+                exportedSource.type = 'unknown';
+            }
+            return exportedSource;
+        }
+
+        function exportLayer (layer) {
+            var layerType;
+            if (layer instanceof CameraLayer) {
+                layerType = 'camera';
+            } else if (layer instanceof AVLayer) {
+                layerType = 'av';
+            } else {
+                layerType = 'unknown';
+            }
+
+            var exportedObject = {
+                name: layer.name,
+                type: layerType,
+                index: layer.index,
+                parentIndex: layer.parent ? layer.parent.index : null
+            };
+
+            if (settings.bakeTransforms) {
+                exportedObject.transform = exportBakedTransform(layer);
+            } else {
+                exportedObject.position = exportProperty(layer.position, layer);
+                exportedObject.rotationX = exportProperty(layer.xRotation, layer);
+                exportedObject.rotationY = exportProperty(layer.yRotation, layer);
+                exportedObject.rotationZ = exportProperty(layer.rotation, layer);
+                exportedObject.orientation = exportProperty(layer.orientation, layer);
+            }
+
+            if (layer instanceof CameraLayer) {
+                exportedObject.zoom = exportProperty(layer.zoom, layer);
+            }
+
+            // The "Point of Interest" property exists and is not hidden, meaning it's taking effect
+            // Interestingly, `pointOfInterest.canSetExpression` is always true for other layer types
+            if (
+                (layer instanceof CameraLayer || layer instanceof LightLayer) &&
+                layer.pointOfInterest.canSetExpression &&
+                !settings.bakeTransforms
+            ) {
+                exportedObject.pointOfInterest = exportProperty(layer.pointOfInterest, layer);
+            }
+
+            if (layer instanceof AVLayer) {
+                // Export layer source
+                var alreadyExported = false;
+                for (var i = 0; i < exportedSources.length; i++) {
+                    if (exportedSources[i] === layer.source) {
+                        alreadyExported = true;
+                        break;
+                    }
+                }
+                if (!alreadyExported) {
+                    exportedSources.push(layer.source);
+                    json.sources.push(exportSource(layer.source));
+                }
+                exportedObject.source = exportedSources.indexOf(layer.source);
+
+                if (!settings.bakeTransforms) {
+                    exportedObject.anchorPoint = exportProperty(layer.anchorPoint, layer);
+                    exportedObject.scale = exportProperty(layer.scale, layer);
+                }
+                exportedObject.opacity = exportProperty(layer.opacity, layer);
+                exportedObject.nullLayer = layer.nullLayer;
+            }
+
+            return exportedObject;
+        }
+
+        try {
+            for (var j = 0; j < layersToExport.length; j++) {
+                try {
+                    var exportedLayer = exportLayer(layersToExport[j]);
+                    json.layers.push(exportedLayer);
+                } catch (err) {
+                    // Give specific information on what layer is causing the problem
+                    // This allows the user to fix it by deselecting the layer, and makes debugging easier
+                    throw new Error('Error exporting layer "' + layersToExport[j].name + '"\nOn line ' + err.line + ': ' + err.message);
                 }
             }
         } finally {
-            evaluator.remove();
+            if (settings.bakeTransforms) {
+                evaluator.remove();
+                for (var i = 0; i < selectedLayers.length; i++) {
+                    selectedLayers[i].selected = true;
+                }
+            }
         }
 
         var savePath = settings.savePath.replace(/\.\w+$/, '.json');
@@ -966,9 +1386,8 @@ function writeSettingsFile(settings, version) {
         // If we can't get the composition viewer, fail early rather than baiting the user into filling out all the
         // settings in the dialog just for it to fail when they click Export
         getCompositionViewer();
-        var d = showDialog(main);
-        d.window.show();
+        main();
     } catch (err) {
-        alert(err);
+        alert(err.message, 'Error');
     }
 }
