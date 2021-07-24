@@ -3,7 +3,7 @@ import bpy
 import bmesh
 from bpy_extras.io_utils import ImportHelper
 import mathutils
-from math import radians, tau, pi
+from math import radians, tau, pi, floor, ceil
 from itertools import chain
 
 bl_info = {
@@ -51,6 +51,12 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
     create_new_collection: bpy.props.BoolProperty(
         name="Create New Collection",
         description="Add all the imported layers to a new collection.",
+        default=False
+    )
+
+    adjust_frame_start_end: bpy.props.BoolProperty(
+        name="Adjust Frame Start/End",
+        description="Adjust the Start and End frames of the playback/rendering range to the imported composition's work area.",
         default=False
     )
 
@@ -217,11 +223,17 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
             prev_rot = rot
 
             for j in range(3):
-                loc_fcurves[j].keyframe_points[i].co_ui = [i + start_frame, loc[j]]
+                k = loc_fcurves[j].keyframe_points[i]
+                k.co_ui = [i + start_frame, loc[j]]
+                k.interpolation = 'LINEAR'
             for j in range(4):
-                rot_fcurves[j].keyframe_points[i].co_ui = [i + start_frame, rot[j]]
+                k = rot_fcurves[j].keyframe_points[i]
+                k.co_ui = [i + start_frame, rot[j]]
+                k.interpolation = 'LINEAR'
             for j in range(3):
-                scale_fcurves[j].keyframe_points[i].co_ui = [i + start_frame, scale[j]]
+                k = scale_fcurves[j].keyframe_points[i]
+                k.co_ui = [i + start_frame, scale[j]]
+                k.interpolation = 'LINEAR'
 
     def execute(self, context):
         scale_factor = self.scale_factor
@@ -534,6 +546,10 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
             render_settings.resolution_x = data['comp']['width']
             render_settings.resolution_y = data['comp']['width']
 
+        if self.adjust_frame_start_end:
+            context.scene.frame_start = floor(data['comp']['workArea'][0] * data['comp']['frameRate'])
+            context.scene.frame_end = ceil(data['comp']['workArea'][1] * data['comp']['frameRate'])
+
         return {'FINISHED'}
 
     def draw(self, context):
@@ -549,6 +565,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         layout.prop(operator, 'use_comp_resolution')
         layout.prop(operator, 'create_new_collection')
         layout.prop(operator, 'handle_framerate')
+        layout.prop(operator, 'adjust_frame_start_end')
 
 def menu_func_import(self, context):
     self.layout.operator(ImportAEComp.bl_idname, text="After Effects composition data, converted (.json)")
