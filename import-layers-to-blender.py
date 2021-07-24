@@ -111,13 +111,13 @@ class ImportAELayers(bpy.types.Operator, ImportHelper):
                     (y + (easeOut['speed'] * influence * (cur_to_next_duration / framerate))) * mul + add
                 ]
 
-    def import_baked_keyframe_channel(self, fcurve, keyframes, startFrame, framerate, mul = 1, add = 0):
+    def import_baked_keyframe_channel(self, fcurve, keyframes, start_frame, framerate, mul = 1, add = 0):
         '''Import a given keyframe channel in "calculated"/baked format onto a given F-curve.
 
         Args:
             fcurve (FCurve): The F-curve to import the keyframes into.
             keyframes: The keyframes.
-            startFrame (int): The frame number at which the keyframe data starts.
+            start_frame (int): The frame number at which the keyframe data starts.
             framerate (int): The scene's framerate.
             mul (int, optional): Multiply all keyframes by this value. Defaults to 1.
             add (int, optional): Add this value to all keyframes. Defaults to 0.
@@ -127,7 +127,7 @@ class ImportAELayers(bpy.types.Operator, ImportHelper):
         for i in range(len(keyframes)):
             keyframe = keyframes[i]
             k = fcurve.keyframe_points[i]
-            k.co_ui = [i + startFrame, keyframe * mul + add]
+            k.co_ui = [i + start_frame, keyframe * mul + add]
             k.interpolation = 'LINEAR'
 
     def ensure_action_exists(self, obj):
