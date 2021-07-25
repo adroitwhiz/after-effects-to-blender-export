@@ -100,6 +100,8 @@ If you're working on the script, you don't need to re-preprocess the file every 
 
 ## Roadmap
 
+These are in no particular order. If one of these features is helpful for your use case, open an issue and I can prioritize it.
+
 - Import options:
     - Toggle flip of Y/Z axes
     - Framerate:
