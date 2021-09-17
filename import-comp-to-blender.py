@@ -544,7 +544,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         if self.use_comp_resolution:
             render_settings = context.scene.render
             render_settings.resolution_x = data['comp']['width']
-            render_settings.resolution_y = data['comp']['width']
+            render_settings.resolution_y = data['comp']['height']
 
         if self.adjust_frame_start_end:
             context.scene.frame_start = floor(data['comp']['workArea'][0] * data['comp']['frameRate'])
