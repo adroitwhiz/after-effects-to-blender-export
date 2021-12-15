@@ -359,7 +359,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 name: activeComp.name,
                 pixelAspect: activeComp.pixelAspect,
                 frameRate: activeComp.frameRate,
-                workArea: [activeComp.workAreaStart, activeComp.workAreaDuration - activeComp.workAreaStart]
+                workArea: [activeComp.workAreaStart, activeComp.workAreaDuration + activeComp.workAreaStart]
             },
             transformsBaked: settings.bakeTransforms,
             version: fileVersion
