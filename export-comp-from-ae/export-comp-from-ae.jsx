@@ -558,7 +558,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                         var time =  i / activeComp.frameRate;
                         var propVal = prop.valueAtTime(time, false /* preExpression */);
                         for (var j = 0; j < numDimensions; j++) {
-                            exportedProp.channels[j].keyframes.push(Array.isArray(propVal) ? propVal[j] : propVal);
+                            exportedProp.channels[j + channelOffset].keyframes.push(Array.isArray(propVal) ? propVal[j] : propVal);
                         }
                     }
                 }
