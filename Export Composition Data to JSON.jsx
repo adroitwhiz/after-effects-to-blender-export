@@ -1032,7 +1032,7 @@ function writeSettingsFile(settings, version) {
                 name: activeComp.name,
                 pixelAspect: activeComp.pixelAspect,
                 frameRate: activeComp.frameRate,
-                workArea: [activeComp.workAreaStart, activeComp.workAreaDuration - activeComp.workAreaStart]
+                workArea: [activeComp.workAreaStart, activeComp.workAreaDuration + activeComp.workAreaStart]
             },
             transformsBaked: settings.bakeTransforms,
             version: fileVersion
@@ -1177,6 +1177,9 @@ var pointsToAffineMatrix = (function() {
 
 
         function exportBakedTransform(layer) {
+            // It's possible to construct a 3D affine transform matrix given a mapping from 4 source points to 4 destination points.
+            // The source points are the arguments of the toWorld functions, and the destination points are their results.
+            // We calculate this affine transform matrix once per frame then decompose it on the Blender side.
             evalPoint1.property(1).expression = "thisComp.layer(\"" + escapeStringForLiteral(layer.name) + "\").toWorld([0, 0, 0])";
             evalPoint2.property(1).expression = "thisComp.layer(\"" + escapeStringForLiteral(layer.name) + "\").toWorld([1, 0, 0])";
             evalPoint3.property(1).expression = "thisComp.layer(\"" + escapeStringForLiteral(layer.name) + "\").toWorld([0, 1, 0])";
@@ -1302,7 +1305,7 @@ var pointsToAffineMatrix = (function() {
                         var time =  i / activeComp.frameRate;
                         var propVal = prop.valueAtTime(time, false /* preExpression */);
                         for (var j = 0; j < numDimensions; j++) {
-                            exportedProp.channels[j].keyframes.push(Array.isArray(propVal) ? propVal[j] : propVal);
+                            exportedProp.channels[j + channelOffset].keyframes.push(Array.isArray(propVal) ? propVal[j] : propVal);
                         }
                     }
                 }
