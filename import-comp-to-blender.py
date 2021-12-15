@@ -564,7 +564,6 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         layout.prop(operator, 'comp_center_to_origin')
         layout.prop(operator, 'use_comp_resolution')
         layout.prop(operator, 'create_new_collection')
-        layout.prop(operator, 'handle_framerate')
         layout.prop(operator, 'adjust_frame_start_end')
 
 def menu_func_import(self, context):
