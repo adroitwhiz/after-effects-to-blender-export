@@ -427,7 +427,24 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             var evalPoint4 = evaluator.property("Effects").property(4);
         }
 
-        // @include 'lib/affine.js'
+        // Takes as input a list of 4 transformed points and returns the 4x4 affine transformation matrix that applies
+        // such a transform. Assumes that the "source" points are [0, 0, 0], [1, 0, 0], [0, 1, 0], and [0, 0, 1].
+        function pointsToAffineMatrix(p0, p1, p2, p3) {
+            return [
+                p1[0] - p0[0],
+                p2[0] - p0[0],
+                p3[0] - p0[0],
+                p0[0],
+                p1[1] - p0[1],
+                p2[1] - p0[1],
+                p3[1] - p0[1],
+                p0[1],
+                p1[2] - p0[2],
+                p2[2] - p0[2],
+                p3[2] - p0[2],
+                p0[2]
+            ];
+        };
 
         function exportBakedTransform(layer) {
             // It's possible to construct a 3D affine transform matrix given a mapping from 4 source points to 4 destination points.
@@ -452,18 +469,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 var point3Val = evalPoint3.property(1).valueAtTime(time, false /* preExpression */);
                 var point4Val = evalPoint4.property(1).valueAtTime(time, false /* preExpression */);
                 var matrix = pointsToAffineMatrix(
-                    [
-                        [0, 0, 0],
-                        [1, 0, 0],
-                        [0, 1, 0],
-                        [0, 0, 1]
-                    ],
-                    [
                         point1Val,
                         point2Val,
                         point3Val,
                         point4Val
-                    ]
                 );
                 keyframes.push(matrix);
             }
