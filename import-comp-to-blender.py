@@ -3,14 +3,14 @@ import bpy
 import bmesh
 from bpy_extras.io_utils import ImportHelper
 import mathutils
-from math import radians, tau, pi, floor, ceil
+from math import radians, pi, floor, ceil
 from itertools import chain
 
 bl_info = {
     "name": "Import After Effects Composition",
     "description": "Import layers from an After Effects composition into Blender",
     "author": "adroitwhiz",
-    "version": (0, 3),
+    "version": (0, 3, 1),
     "blender": (2, 90, 0),
     "category": "Import-Export",
     "wiki_url": "https://github.com/adroitwhiz/after-effects-to-blender-export/",
@@ -58,6 +58,33 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         name="Adjust Frame Start/End",
         description="Adjust the Start and End frames of the playback/rendering range to the imported composition's work area.",
         default=False
+    )
+
+    handle_framerate: bpy.props.EnumProperty(
+        items=[
+            (
+                "preserve_frame_numbers",
+                "Preserve Frame Numbers",
+                "Keep the frame numbers the same, without changing the Blender scene's framerate, if framerates differ",
+                "",
+                0
+            ), (
+                "set_framerate",
+                "Set Scene Framerate to Comp Framerate",
+                "Set the Blender scene's framerate to match that of the imported composition",
+                "",
+                1
+            ), (
+                "remap_times",
+                "Remap Frame Times",
+                "If the Blender scene's framerate differs, preserve the speed of the imported composition by changing frame numbers",
+                "",
+                2
+            ),
+        ],
+        name="Handle Framerate",
+        description="How to handle the framerate of the imported composition differing from the Blender scene's framerate",
+        default="preserve_frame_numbers"
     )
 
     def make_or_get_fcurve(self, action, data_path, index=-1):
@@ -120,14 +147,15 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                     (y + (easeOut['speed'] * influence * (cur_to_next_duration / framerate))) * mul + add
                 ]
 
-    def import_baked_keyframe_channel(self, fcurve, keyframes, start_frame, framerate, mul = 1, add = 0):
+    def import_baked_keyframe_channel(self, fcurve, keyframes, start_frame, comp_framerate, desired_framerate, mul = 1, add = 0):
         '''Import a given keyframe channel in "calculated"/baked format onto a given F-curve.
 
         Args:
             fcurve (FCurve): The F-curve to import the keyframes into.
             keyframes: The keyframes.
             start_frame (int): The frame number at which the keyframe data starts.
-            framerate (int): The scene's framerate.
+            comp_framerate (int): The comp's framerate.
+            desired_framerate (int): The desired framerate.
             mul (int, optional): Multiply all keyframes by this value. Defaults to 1.
             add (int, optional): Add this value to all keyframes. Defaults to 0.
         '''
@@ -136,7 +164,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         for i in range(len(keyframes)):
             keyframe = keyframes[i]
             k = fcurve.keyframe_points[i]
-            k.co_ui = [i + start_frame, keyframe * mul + add]
+            k.co_ui = [((i + start_frame) * desired_framerate) / comp_framerate, keyframe * mul + add]
             k.interpolation = 'LINEAR'
 
     def ensure_action_exists(self, obj):
@@ -150,7 +178,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         if obj.animation_data.action is None:
             obj.animation_data.action = bpy.data.actions.new(obj.name + 'Action')
 
-    def import_property(self, obj, data_path, data_index, prop_data, framerate, mul = 1, add = 0):
+    def import_property(self, obj, data_path, data_index, prop_data, comp_framerate, desired_framerate, mul = 1, add = 0):
         '''Imports a given property from the JSON file onto a given Blender object.
 
         Args:
@@ -158,7 +186,8 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
             data_path (str): The destination data path of the property.
             data_index (int): The index into the destination data path, for multidimensional properties. -1 for single-dimension properties.
             prop_data: The JSON property data.
-            framerate (int): The scene's framerate.
+            comp_framerate (int): The comp's framerate.
+            desired_framerate (int): The desired framerate.
             mul (int, optional): Multiply the property by this value. Defaults to 1.
             add (int, optional): Add this value to the property. Defaults to 0.
         '''
@@ -169,7 +198,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                 self.import_bezier_keyframe_channel(
                     fcurve,
                     prop_data['keyframes'],
-                    framerate,
+                    desired_framerate,
                     mul,
                     add
                 )
@@ -178,7 +207,8 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                     fcurve,
                     prop_data['keyframes'],
                     prop_data['startFrame'],
-                    framerate,
+                    comp_framerate,
+                    desired_framerate,
                     mul,
                     add
                 )
@@ -190,7 +220,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                 cur_val[data_index] = prop_data['value'] * mul + add
             setattr(obj, data_path, cur_val)
 
-    def import_baked_transform(self, obj, data, func):
+    def import_baked_transform(self, obj, data, comp_framerate, desired_framerate, func):
         self.ensure_action_exists(obj)
         obj.rotation_mode = 'QUATERNION'
 
@@ -222,17 +252,18 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                 rot.make_compatible(prev_rot)
             prev_rot = rot
 
+            kx = ((i + start_frame) * desired_framerate) / comp_framerate
             for j in range(3):
                 k = loc_fcurves[j].keyframe_points[i]
-                k.co_ui = [i + start_frame, loc[j]]
+                k.co_ui = [kx, loc[j]]
                 k.interpolation = 'LINEAR'
             for j in range(4):
                 k = rot_fcurves[j].keyframe_points[i]
-                k.co_ui = [i + start_frame, rot[j]]
+                k.co_ui = [kx, rot[j]]
                 k.interpolation = 'LINEAR'
             for j in range(3):
                 k = scale_fcurves[j].keyframe_points[i]
-                k.co_ui = [i + start_frame, scale[j]]
+                k.co_ui = [kx, scale[j]]
                 k.interpolation = 'LINEAR'
 
     def execute(self, context):
@@ -254,6 +285,15 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
 
         imported_objects = []
         innermost_objects_by_index = dict()
+
+
+        if self.handle_framerate == 'remap_times':
+            desired_framerate = context.scene.render.fps
+        else:
+            desired_framerate = data['comp']['frameRate']
+
+        if self.handle_framerate == 'set_framerate':
+            context.scene.render.fps = data['comp']['frameRate']
 
         for layer in data['layers']:
             if layer['type'] == 'av':
@@ -312,7 +352,8 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                         data_path='location',
                         data_index=0,
                         prop_data=layer['anchorPoint']['channels'][0],
-                        framerate=data['comp']['frameRate'],
+                        comp_framerate=data['comp']['frameRate'],
+                        desired_framerate=desired_framerate,
                         mul=-scale_factor
                     )
                     self.import_property(
@@ -320,7 +361,8 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                         data_path='location',
                         data_index=2,
                         prop_data=layer['anchorPoint']['channels'][1],
-                        framerate=data['comp']['frameRate'],
+                        comp_framerate=data['comp']['frameRate'],
+                        desired_framerate=desired_framerate,
                         mul=scale_factor
                     )
                     self.import_property(
@@ -328,7 +370,8 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                         data_path='location',
                         data_index=1,
                         prop_data=layer['anchorPoint']['channels'][2],
-                        framerate=data['comp']['frameRate'],
+                        comp_framerate=data['comp']['frameRate'],
+                        desired_framerate=desired_framerate,
                         mul=-scale_factor
                     )
                     transform_target.parent = anchor_parent
@@ -340,7 +383,8 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                         data_path='scale',
                         data_index=0,
                         prop_data=layer['scale']['channels'][0],
-                        framerate=data['comp']['frameRate'],
+                        comp_framerate=data['comp']['frameRate'],
+                        desired_framerate=desired_framerate,
                         mul=0.01
                     )
                     self.import_property(
@@ -348,7 +392,8 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                         data_path='scale',
                         data_index=2,
                         prop_data=layer['scale']['channels'][1],
-                        framerate=data['comp']['frameRate'],
+                        comp_framerate=data['comp']['frameRate'],
+                        desired_framerate=desired_framerate,
                         mul=0.01
                     )
                     self.import_property(
@@ -356,7 +401,8 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                         data_path='scale',
                         data_index=1,
                         prop_data=layer['scale']['channels'][2],
-                        framerate=data['comp']['frameRate'],
+                        comp_framerate=data['comp']['frameRate'],
+                        desired_framerate=desired_framerate,
                         mul=0.01
                     )
 
@@ -380,7 +426,8 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                             data_path='rotation_euler',
                             data_index=channel_order[index],
                             prop_data=layer[prop_name]['channels'][0],
-                            framerate=data['comp']['frameRate'],
+                            comp_framerate=data['comp']['frameRate'],
+                            desired_framerate=desired_framerate,
                             mul=ANGLE_CONVERSION_FACTOR * channel_multiply[index],
                             add=channel_add[index]
                         )
@@ -451,7 +498,8 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                         data_path='location',
                         data_index=0,
                         prop_data=layer['pointOfInterest']['channels'][0],
-                        framerate=data['comp']['frameRate'],
+                        comp_framerate=data['comp']['frameRate'],
+                        desired_framerate=desired_framerate,
                         mul=scale_factor
                     )
                     self.import_property(
@@ -459,15 +507,17 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                         data_path='location',
                         data_index=2,
                         prop_data=layer['pointOfInterest']['channels'][1],
-                        framerate=data['comp']['frameRate'],
+                        comp_framerate=data['comp']['frameRate'],
+                        desired_framerate=desired_framerate,
                         mul=-scale_factor
                     )
                     self.import_property(
-                        obj = point_of_interest,
+                        obj=point_of_interest,
                         data_path='location',
                         data_index=1,
                         prop_data=layer['pointOfInterest']['channels'][2],
-                        framerate=data['comp']['frameRate'],
+                        comp_framerate=data['comp']['frameRate'],
+                        desired_framerate=desired_framerate,
                         mul=scale_factor
                     )
 
@@ -488,7 +538,8 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                         data_path='location',
                         data_index=0,
                         prop_data=layer['position']['channels'][0],
-                        framerate=data['comp']['frameRate'],
+                        comp_framerate=data['comp']['frameRate'],
+                        desired_framerate=desired_framerate,
                         mul=scale_factor,
                         add=-data['comp']['width'] * 0.5 * self.scale_factor if should_translate else 0
                     )
@@ -497,7 +548,8 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                         data_path='location',
                         data_index=2,
                         prop_data=layer['position']['channels'][1],
-                        framerate=data['comp']['frameRate'],
+                        comp_framerate=data['comp']['frameRate'],
+                        desired_framerate=desired_framerate,
                         mul=-scale_factor,
                         add=data['comp']['height'] * 0.5 * self.scale_factor if should_translate else 0
                     )
@@ -506,7 +558,8 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                         data_path='location',
                         data_index=1,
                         prop_data=layer['position']['channels'][2],
-                        framerate=data['comp']['frameRate'],
+                        comp_framerate=data['comp']['frameRate'],
+                        desired_framerate=desired_framerate,
                         mul=scale_factor
                     )
 
@@ -516,7 +569,8 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                     data_path='lens',
                     data_index=-1,
                     prop_data=layer['zoom']['channels'][0],
-                    framerate=data['comp']['frameRate'],
+                    comp_framerate=data['comp']['frameRate'],
+                    desired_framerate=desired_framerate,
                     # 36 = default camera sensor size
                     mul=36 / data['comp']['width']
                 )
@@ -547,8 +601,8 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
             render_settings.resolution_y = data['comp']['height']
 
         if self.adjust_frame_start_end:
-            context.scene.frame_start = floor(data['comp']['workArea'][0] * data['comp']['frameRate'])
-            context.scene.frame_end = ceil(data['comp']['workArea'][1] * data['comp']['frameRate'])
+            context.scene.frame_start = floor(data['comp']['workArea'][0] * desired_framerate)
+            context.scene.frame_end = ceil(data['comp']['workArea'][1] * desired_framerate)
 
         return {'FINISHED'}
 
@@ -564,6 +618,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         layout.prop(operator, 'comp_center_to_origin')
         layout.prop(operator, 'use_comp_resolution')
         layout.prop(operator, 'create_new_collection')
+        layout.prop(operator, 'handle_framerate')
         layout.prop(operator, 'adjust_frame_start_end')
 
 def menu_func_import(self, context):

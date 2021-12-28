@@ -104,10 +104,6 @@ These are in no particular order. If one of these features is helpful for your u
 
 - Import options:
     - Toggle flip of Y/Z axes
-    - Framerate:
-        - Set Blender framerate to comp framerate
-        - Maintain frame numbers
-        - Remap comp framerate to Blender framerate
 
 - After Effects features:
     - Pixel aspect ratio (AE expands horizontally, Blender crops vertically according to "Sensor Fit")
