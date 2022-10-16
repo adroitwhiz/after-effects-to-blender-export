@@ -10,7 +10,7 @@ bl_info = {
     "name": "Import After Effects Composition",
     "description": "Import layers from an After Effects composition into Blender",
     "author": "adroitwhiz",
-    "version": (0, 3, 1),
+    "version": (0, 3, 2),
     "blender": (2, 91, 0),
     "category": "Import-Export",
     "wiki_url": "https://github.com/adroitwhiz/after-effects-to-blender-export/",
@@ -220,7 +220,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                 cur_val[data_index] = prop_data['value'] * mul + add
             setattr(obj, data_path, cur_val)
 
-    def import_baked_transform(self, obj, data, comp_framerate, desired_framerate, func):
+    def import_baked_transform(self, obj, data, comp_framerate, desired_framerate, func = None):
         self.ensure_action_exists(obj)
         obj.rotation_mode = 'QUATERNION'
 
@@ -338,7 +338,13 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                     rot = pre_quat @ rot @ post_quat
                     return loc, rot, scale
 
-                self.import_baked_transform(obj, layer['transform'], transform)
+                self.import_baked_transform(
+                    obj,
+                    layer['transform'],
+                    comp_framerate=data['comp']['frameRate'],
+                    desired_framerate=desired_framerate,
+                    func=transform
+                )
             else:
                 if 'anchorPoint' in layer and (
                     any(channel['isKeyframed'] for channel in layer['anchorPoint']['channels']) or
