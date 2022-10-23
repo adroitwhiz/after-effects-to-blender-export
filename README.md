@@ -4,7 +4,7 @@ This repo includes a script for After Effects, and add-on for Blender, that allo
 
 ## Installation / Usage (After Effects)
 
-To install the After Effects script, first [download it](https://github.com/adroitwhiz/after-effects-to-blender-export/raw/master/Export%Composition%20Data%20to%20JSON.jsx) and then select it via File > Scripts > Install Script File...:
+To install the After Effects script, first [download it](https://github.com/adroitwhiz/after-effects-to-blender-export/raw/master/Export%20Composition%20Data%20to%20JSON.jsx) and then select it via File > Scripts > Install Script File...:
 
 ![AE step 1](docs/ae-step1.png)
 
