@@ -10,12 +10,20 @@ bl_info = {
     "name": "Import After Effects Composition",
     "description": "Import layers from an After Effects composition into Blender",
     "author": "adroitwhiz",
-    "version": (0, 3, 2),
+    "version": (0, 3, 3),
     "blender": (2, 91, 0),
     "category": "Import-Export",
     "wiki_url": "https://github.com/adroitwhiz/after-effects-to-blender-export/",
     "tracker_url": "https://github.com/adroitwhiz/after-effects-to-blender-export/issues/new/"
 }
+
+# Blender will warn users if they enable this addon in an older version of Blender than is officially supported,
+# but will not prevent them from using it. This warning is apparently not visible enough, and Blender will throw an
+# obscure error when those users attempt to actually use the add-on. Instead, prevent the add-on from being enabled in
+# versions of Blender too old to allow it to function.
+if bpy.app.version < bl_info['blender']:
+    min_blender_version_string = '.'.join(str(ver) for ver in bl_info['blender'])
+    raise Exception(f"This add-on is incompatible with Blender versions older than {min_blender_version_string}. Please update to a newer version of Blender.")
 
 class ImportAEComp(bpy.types.Operator, ImportHelper):
     """Import layers from an After Effects composition, as exported by the corresponding AE script"""
