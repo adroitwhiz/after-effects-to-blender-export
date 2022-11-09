@@ -176,7 +176,6 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
             mul (int, optional): Multiply all keyframes by this value. Defaults to 1.
             add (int, optional): Add this value to all keyframes. Defaults to 0.
         '''
-        # TODO: convert from comp framerate to blend framerate
         fcurve.keyframe_points.add(len(keyframes))
         for i, keyframe in enumerate(keyframes):
             k = fcurve.keyframe_points[i]
