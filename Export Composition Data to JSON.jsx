@@ -1,6 +1,6 @@
 
 /*
-Copyright (c) 2020 adroitwhiz
+Copyright (c) 2020-2022 adroitwhiz
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -978,6 +978,12 @@ function writeSettingsFile(settings, version) {
         if (!checkPermissions()) return;
         getCompositionViewer().setActive();
         var activeComp = app.project.activeItem;
+        if (!activeComp) {
+            // This is the case if e.g. you've just created the project and the two big "New Composition" and
+            // "New Composition From Footage" are showing where the composition viewer would be. The active viewer
+            // is of ViewerType.VIEWER_COMPOSITION, but there's no actual composition open.
+            throw new Error('No composition is currently open.');
+        }
 
         var d = showDialog(
             function(settings) {
@@ -1100,8 +1106,9 @@ function writeSettingsFile(settings, version) {
             var evalPoint4 = evaluator.property("Effects").property(4);
         }
 
-        // Takes as input a list of 4 transformed points and returns the 4x4 affine transformation matrix that applies
+        // Takes as input a list of 4 transformed points and returns the 3x4 affine transformation matrix that applies
         // such a transform. Assumes that the "source" points are [0, 0, 0], [1, 0, 0], [0, 1, 0], and [0, 0, 1].
+        // The 4th row will always be [0, 0, 0, 1], and is thus omitted.
         function pointsToAffineMatrix(p0, p1, p2, p3) {
             return [
                 p1[0] - p0[0],

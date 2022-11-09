@@ -1,6 +1,7 @@
 import json
 import bpy
-import bmesh
+from bpy.types import FCurve
+from typing import Callable, Optional, Tuple
 from bpy_extras.io_utils import ImportHelper
 import mathutils
 from math import radians, pi, floor, ceil
@@ -95,7 +96,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         default="preserve_frame_numbers"
     )
 
-    def make_or_get_fcurve(self, action, data_path, index=-1):
+    def make_or_get_fcurve(self, action: 'bpy.types.Action', data_path: str, index=-1) -> 'FCurve':
         '''Returns an F-curve controlling a certain datapath on the given action, creating one if it does not already exist.
 
         Args:
@@ -114,19 +115,18 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         # the action didn't have the fcurve we needed, yet
         return action.fcurves.new(data_path, index=index)
 
-    def import_bezier_keyframe_channel(self, fcurve, keyframes, framerate, mul = 1, add = 0):
+    def import_bezier_keyframe_channel(self, fcurve: 'FCurve', keyframes, framerate: float, mul = 1.0, add = 0.0):
         '''Imports a given keyframe channel in Bezier format onto a given F-curve.
 
         Args:
             fcurve (FCurve): The F-curve to import the keyframes into.
             keyframes: The keyframes.
-            framerate (int): The scene's framerate.
-            mul (int, optional): Multiply all keyframes by this value. Defaults to 1.
-            add (int, optional): Add this value to all keyframes. Defaults to 0.
+            framerate (float): The scene's framerate.
+            mul (float, optional): Multiply all keyframes by this value. Defaults to 1.
+            add (float, optional): Add this value to all keyframes. Defaults to 0.
         '''
         fcurve.keyframe_points.add(len(keyframes))
-        for i in range(len(keyframes)):
-            keyframe = keyframes[i]
+        for i, keyframe in enumerate(keyframes):
             k = fcurve.keyframe_points[i]
             if keyframe['interpolationOut'] == 'hold':
                 k.interpolation = 'CONSTANT'
@@ -155,27 +155,34 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                     (y + (easeOut['speed'] * influence * (cur_to_next_duration / framerate))) * mul + add
                 ]
 
-    def import_baked_keyframe_channel(self, fcurve, keyframes, start_frame, comp_framerate, desired_framerate, mul = 1, add = 0):
+    def import_baked_keyframe_channel(
+        self,
+        fcurve: FCurve,
+        keyframes,
+        start_frame: int,
+        comp_framerate: float,
+        desired_framerate: float,
+        mul = 1.0,
+        add = 0.0):
         '''Import a given keyframe channel in "calculated"/baked format onto a given F-curve.
 
         Args:
             fcurve (FCurve): The F-curve to import the keyframes into.
             keyframes: The keyframes.
             start_frame (int): The frame number at which the keyframe data starts.
-            comp_framerate (int): The comp's framerate.
-            desired_framerate (int): The desired framerate.
+            comp_framerate (float): The comp's framerate.
+            desired_framerate (float): The desired framerate.
             mul (int, optional): Multiply all keyframes by this value. Defaults to 1.
             add (int, optional): Add this value to all keyframes. Defaults to 0.
         '''
         # TODO: convert from comp framerate to blend framerate
         fcurve.keyframe_points.add(len(keyframes))
-        for i in range(len(keyframes)):
-            keyframe = keyframes[i]
+        for i, keyframe in enumerate(keyframes):
             k = fcurve.keyframe_points[i]
             k.co_ui = [((i + start_frame) * desired_framerate) / comp_framerate, keyframe * mul + add]
             k.interpolation = 'LINEAR'
 
-    def ensure_action_exists(self, obj):
+    def ensure_action_exists(self, obj: 'bpy.types.Object'):
         '''Create animation data and an Action for a given object if it does not already exist.
 
         Args:
@@ -186,7 +193,16 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         if obj.animation_data.action is None:
             obj.animation_data.action = bpy.data.actions.new(obj.name + 'Action')
 
-    def import_property(self, obj, data_path, data_index, prop_data, comp_framerate, desired_framerate, mul = 1, add = 0):
+    def import_property(
+        self,
+        obj: 'bpy.types.Object',
+        data_path: str,
+        data_index: int,
+        prop_data,
+        comp_framerate: float,
+        desired_framerate: float,
+        mul = 1.0,
+        add = 0.0):
         '''Imports a given property from the JSON file onto a given Blender object.
 
         Args:
@@ -194,10 +210,10 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
             data_path (str): The destination data path of the property.
             data_index (int): The index into the destination data path, for multidimensional properties. -1 for single-dimension properties.
             prop_data: The JSON property data.
-            comp_framerate (int): The comp's framerate.
-            desired_framerate (int): The desired framerate.
-            mul (int, optional): Multiply the property by this value. Defaults to 1.
-            add (int, optional): Add this value to the property. Defaults to 0.
+            comp_framerate (float): The comp's framerate.
+            desired_framerate (float): The desired framerate.
+            mul (float, optional): Multiply the property by this value. Defaults to 1.
+            add (float, optional): Add this value to the property. Defaults to 0.
         '''
         if prop_data['isKeyframed']:
             self.ensure_action_exists(obj)
@@ -228,7 +244,27 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                 cur_val[data_index] = prop_data['value'] * mul + add
             setattr(obj, data_path, cur_val)
 
-    def import_baked_transform(self, obj, data, comp_framerate, desired_framerate, func = None):
+    def import_baked_transform(
+        self,
+        obj: 'bpy.types.Object',
+        data,
+        comp_framerate: float,
+        desired_framerate: float,
+        func: Optional[
+            Callable[
+                ['mathutils.Vector', 'mathutils.Quaternion', 'mathutils.Vector'],
+                Tuple['mathutils.Vector', 'mathutils.Quaternion', 'mathutils.Vector']
+            ]
+        ] = None):
+        '''Import a baked transform (one 4x4 transform matrix per frame) onto a given Blender object.
+
+        Args:
+            obj (bpy_struct): The object to import the property onto.
+            data: The JSON transform data.
+            comp_framerate (float): The comp's framerate.
+            desired_framerate (float): The desired framerate.
+            func ((Vector, Quaternion, Vector) -> (Vector, Quaternion, Vector), optional): Function to call on each keyframe.
+        '''
         self.ensure_action_exists(obj)
         obj.rotation_mode = 'QUATERNION'
 
@@ -243,8 +279,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
             fcurve.keyframe_points.add(len(keyframes))
 
         prev_rot = None
-        for i in range(len(keyframes)):
-            keyframe = keyframes[i]
+        for i, keyframe in enumerate(keyframes):
             mat = mathutils.Matrix((
                 (keyframe[0], keyframe[1], keyframe[2], keyframe[3]),
                 (keyframe[4], keyframe[5], keyframe[6], keyframe[7]),
@@ -380,7 +415,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                         mul=scale_factor
                     )
                     self.import_property(
-                        obj = transform_target,
+                        obj=transform_target,
                         data_path='location',
                         data_index=1,
                         prop_data=layer['anchorPoint']['channels'][2],
@@ -411,7 +446,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                         mul=0.01
                     )
                     self.import_property(
-                        obj = transform_target,
+                        obj=transform_target,
                         data_path='scale',
                         data_index=1,
                         prop_data=layer['scale']['channels'][2],
@@ -514,7 +549,9 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                         prop_data=layer['pointOfInterest']['channels'][0],
                         comp_framerate=data['comp']['frameRate'],
                         desired_framerate=desired_framerate,
-                        mul=scale_factor
+                        mul=scale_factor,
+                        # TODO: abstract the process of "comp center to origin" for all translations
+                        add=-data['comp']['width'] * 0.5 * self.scale_factor if self.comp_center_to_origin else 0
                     )
                     self.import_property(
                         obj=point_of_interest,
@@ -523,7 +560,8 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                         prop_data=layer['pointOfInterest']['channels'][1],
                         comp_framerate=data['comp']['frameRate'],
                         desired_framerate=desired_framerate,
-                        mul=-scale_factor
+                        mul=-scale_factor,
+                        add=data['comp']['height'] * 0.5 * self.scale_factor if self.comp_center_to_origin else 0
                     )
                     self.import_property(
                         obj=point_of_interest,
@@ -568,7 +606,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                         add=data['comp']['height'] * 0.5 * self.scale_factor if should_translate else 0
                     )
                     self.import_property(
-                        obj = transform_target,
+                        obj=transform_target,
                         data_path='location',
                         data_index=1,
                         prop_data=layer['position']['channels'][2],
@@ -615,12 +653,15 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
             render_settings.resolution_y = data['comp']['height']
 
         if self.adjust_frame_start_end:
-            context.scene.frame_start = floor(data['comp']['workArea'][0] * desired_framerate)
-            context.scene.frame_end = ceil(data['comp']['workArea'][1] * desired_framerate)
+            # Compensate for floating-point error
+            # TODO: there should be a lot less floating-point error. ExtendScript is probably printing floats poorly.
+            context.scene.frame_start = floor(data['comp']['workArea'][0] * desired_framerate + 1e-13)
+            # After Effects' work area excludes the end point; Blender's includes it. Subtract 1 from the end.
+            context.scene.frame_end = ceil(data['comp']['workArea'][1] * desired_framerate - 1e-13) - 1
 
         return {'FINISHED'}
 
-    def draw(self, context):
+    def draw(self, context: 'bpy.types.Context'):
         layout = self.layout
         # Give the checkboxes room to breathe
         layout.use_property_split = False
