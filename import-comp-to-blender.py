@@ -310,6 +310,42 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                 k.co_ui = [kx, scale[j]]
                 k.interpolation = 'LINEAR'
 
+    def import_property_spatial(
+        self,
+        obj: 'bpy.types.Object',
+        data_path: str,
+        prop_data,
+        comp_framerate: float,
+        desired_framerate: float,
+        swizzle: Tuple[int, int, int],
+        mul: Tuple[float, float, float],
+        add: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+    ):
+        '''Import a 3D spatial property.
+
+        Args:
+            obj (bpy_struct): The object to import the property onto.
+            data_path (str): The destination property's data path.
+            prop_data: The JSON property data.
+            comp_framerate (float): The comp's framerate.
+            desired_framerate (float): The desired framerate.
+            swizzle (int, int, int): The indices to place the destination values onto (e.g. (0, 2, 1) to map
+                the channel with source index 1 to destination index 2, and vice versa).
+            mul (float, float, float): The (pre-swizzle) values to multiply the keyframe values by.
+            add (float, float, float): The (pre-swizzle) values to add to the keyframe values.
+        '''
+        for i in range(3):
+            self.import_property(
+                obj=obj,
+                data_path=data_path,
+                data_index=swizzle[i],
+                prop_data=prop_data['channels'][i],
+                comp_framerate=comp_framerate,
+                desired_framerate=desired_framerate,
+                mul=mul[i],
+                add=add[i]
+            )
+
     def execute(self, context):
         scale_factor = self.scale_factor
 
@@ -393,84 +429,48 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                     anchor_parent = bpy.data.objects.new(layer['name'] + ' Anchor Point', None)
                     anchor_parent.empty_display_type = 'ARROWS'
                     added_objects.append(anchor_parent)
-                    self.import_property(
+                    self.import_property_spatial(
                         obj=transform_target,
                         data_path='location',
-                        data_index=0,
-                        prop_data=layer['anchorPoint']['channels'][0],
+                        prop_data=layer['anchorPoint'],
                         comp_framerate=data['comp']['frameRate'],
                         desired_framerate=desired_framerate,
-                        mul=-scale_factor
-                    )
-                    self.import_property(
-                        obj=transform_target,
-                        data_path='location',
-                        data_index=2,
-                        prop_data=layer['anchorPoint']['channels'][1],
-                        comp_framerate=data['comp']['frameRate'],
-                        desired_framerate=desired_framerate,
-                        mul=scale_factor
-                    )
-                    self.import_property(
-                        obj=transform_target,
-                        data_path='location',
-                        data_index=1,
-                        prop_data=layer['anchorPoint']['channels'][2],
-                        comp_framerate=data['comp']['frameRate'],
-                        desired_framerate=desired_framerate,
-                        mul=-scale_factor
+                        swizzle=(0, 2, 1),
+                        mul=(-scale_factor, scale_factor, -scale_factor)
                     )
                     transform_target.parent = anchor_parent
                     transform_target = anchor_parent
 
                 if 'scale' in layer:
-                    self.import_property(
+                    self.import_property_spatial(
                         obj=transform_target,
                         data_path='scale',
-                        data_index=0,
-                        prop_data=layer['scale']['channels'][0],
+                        prop_data=layer['scale'],
                         comp_framerate=data['comp']['frameRate'],
                         desired_framerate=desired_framerate,
-                        mul=0.01
-                    )
-                    self.import_property(
-                        obj=transform_target,
-                        data_path='scale',
-                        data_index=2,
-                        prop_data=layer['scale']['channels'][1],
-                        comp_framerate=data['comp']['frameRate'],
-                        desired_framerate=desired_framerate,
-                        mul=0.01
-                    )
-                    self.import_property(
-                        obj=transform_target,
-                        data_path='scale',
-                        data_index=1,
-                        prop_data=layer['scale']['channels'][2],
-                        comp_framerate=data['comp']['frameRate'],
-                        desired_framerate=desired_framerate,
-                        mul=0.01
+                        swizzle=(0, 2, 1),
+                        mul=(0.01, 0.01, 0.01)
                     )
 
                 ANGLE_CONVERSION_FACTOR = pi / 180
                 if layer['type'] == 'camera':
                     # Rotate camera upwards 90 degrees along the X axis
                     transform_target.rotation_mode = 'ZYX'
-                    channel_order = [0, 1, 2]
-                    channel_add = [pi / 2, 0, 0]
-                    channel_multiply = [1, -1, -1]
+                    channel_swizzle = (0, 1, 2)
+                    channel_add = (pi / 2, 0, 0)
+                    channel_multiply = (1, -1, -1)
                 else:
                     transform_target.rotation_mode = 'YZX'
-                    channel_order = [0, 2, 1]
-                    channel_add = [0, 0, 0]
-                    channel_multiply = [1, -1, 1]
+                    channel_swizzle = (0, 2, 1)
+                    channel_add = (0, 0, 0)
+                    channel_multiply = (1, -1, 1)
 
                 for index, prop_name in enumerate(['rotationX', 'rotationY', 'rotationZ']):
                     if prop_name in layer:
                         self.import_property(
                             obj=transform_target,
                             data_path='rotation_euler',
-                            data_index=channel_order[index],
+                            data_index=channel_swizzle[index],
                             prop_data=layer[prop_name]['channels'][0],
                             comp_framerate=data['comp']['frameRate'],
                             desired_framerate=desired_framerate,
@@ -539,35 +539,20 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                     point_of_interest = bpy.data.objects.new(layer['name'] + ' Point Of Interest', None)
                     added_objects.append(point_of_interest)
 
-                    self.import_property(
+                    self.import_property_spatial(
                         obj=point_of_interest,
                         data_path='location',
-                        data_index=0,
-                        prop_data=layer['pointOfInterest']['channels'][0],
+                        prop_data=layer['pointOfInterest'],
                         comp_framerate=data['comp']['frameRate'],
                         desired_framerate=desired_framerate,
-                        mul=scale_factor,
-                        # TODO: abstract the process of "comp center to origin" for all translations
-                        add=-data['comp']['width'] * 0.5 * self.scale_factor if self.comp_center_to_origin else 0
-                    )
-                    self.import_property(
-                        obj=point_of_interest,
-                        data_path='location',
-                        data_index=2,
-                        prop_data=layer['pointOfInterest']['channels'][1],
-                        comp_framerate=data['comp']['frameRate'],
-                        desired_framerate=desired_framerate,
-                        mul=-scale_factor,
-                        add=data['comp']['height'] * 0.5 * self.scale_factor if self.comp_center_to_origin else 0
-                    )
-                    self.import_property(
-                        obj=point_of_interest,
-                        data_path='location',
-                        data_index=1,
-                        prop_data=layer['pointOfInterest']['channels'][2],
-                        comp_framerate=data['comp']['frameRate'],
-                        desired_framerate=desired_framerate,
-                        mul=scale_factor
+                        swizzle=(0, 2, 1),
+                        mul=(scale_factor, -scale_factor, scale_factor),
+                        add=(
+                            # TODO: abstract the process of "comp center to origin" for all translations
+                            -data['comp']['width'] * 0.5 * self.scale_factor if self.comp_center_to_origin else 0,
+                            data['comp']['height'] * 0.5 * self.scale_factor if self.comp_center_to_origin else 0,
+                            0
+                        )
                     )
 
                     track_constraint = point_of_interest_parent.constraints.new('TRACK_TO')
@@ -582,34 +567,19 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                 should_translate = self.comp_center_to_origin and layer['parentIndex'] is None
 
                 if 'position' in layer:
-                    self.import_property(
+                    self.import_property_spatial(
                         obj=transform_target,
                         data_path='location',
-                        data_index=0,
-                        prop_data=layer['position']['channels'][0],
+                        prop_data=layer['position'],
                         comp_framerate=data['comp']['frameRate'],
                         desired_framerate=desired_framerate,
-                        mul=scale_factor,
-                        add=-data['comp']['width'] * 0.5 * self.scale_factor if should_translate else 0
-                    )
-                    self.import_property(
-                        obj=transform_target,
-                        data_path='location',
-                        data_index=2,
-                        prop_data=layer['position']['channels'][1],
-                        comp_framerate=data['comp']['frameRate'],
-                        desired_framerate=desired_framerate,
-                        mul=-scale_factor,
-                        add=data['comp']['height'] * 0.5 * self.scale_factor if should_translate else 0
-                    )
-                    self.import_property(
-                        obj=transform_target,
-                        data_path='location',
-                        data_index=1,
-                        prop_data=layer['position']['channels'][2],
-                        comp_framerate=data['comp']['frameRate'],
-                        desired_framerate=desired_framerate,
-                        mul=scale_factor
+                        swizzle=(0, 2, 1),
+                        mul=(scale_factor, -scale_factor, scale_factor),
+                        add=(
+                            -data['comp']['width'] * 0.5 * self.scale_factor if should_translate else 0,
+                            data['comp']['height'] * 0.5 * self.scale_factor if should_translate else 0,
+                            0
+                        )
                     )
 
             if layer['type'] == 'camera':
