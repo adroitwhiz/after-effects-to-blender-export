@@ -106,7 +106,6 @@ These are in no particular order. If one of these features is helpful for your u
     - Toggle flip of Y/Z axes
 
 - After Effects features:
-    - Pixel aspect ratio (AE expands horizontally, Blender crops vertically according to "Sensor Fit")
     - Nested 3D compositions
     - Images/videos as planes
     - Lights

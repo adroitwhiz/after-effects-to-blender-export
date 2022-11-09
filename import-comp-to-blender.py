@@ -3,8 +3,9 @@ import bpy
 from bpy.types import FCurve
 from typing import Callable, Optional, Tuple
 from bpy_extras.io_utils import ImportHelper
-import mathutils
-from math import radians, pi, floor, ceil
+from mathutils import Euler, Matrix, Quaternion, Vector
+from math import radians, pi, floor, ceil, isclose
+from fractions import Fraction
 from itertools import chain
 
 bl_info = {
@@ -53,7 +54,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
 
     use_comp_resolution: bpy.props.BoolProperty(
         name="Use Comp Resolution",
-        description="Change the scene resolution to the resolution of the imported composition",
+        description="Change the scene resolution and pixel aspect ratio to those of the imported composition",
         default=False
     )
 
@@ -252,8 +253,8 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         desired_framerate: float,
         func: Optional[
             Callable[
-                ['mathutils.Vector', 'mathutils.Quaternion', 'mathutils.Vector'],
-                Tuple['mathutils.Vector', 'mathutils.Quaternion', 'mathutils.Vector']
+                ['Vector', 'Quaternion', 'Vector'],
+                Tuple['Vector', 'Quaternion', 'Vector']
             ]
         ] = None):
         '''Import a baked transform (one 4x4 transform matrix per frame) onto a given Blender object.
@@ -280,7 +281,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
 
         prev_rot = None
         for i, keyframe in enumerate(keyframes):
-            mat = mathutils.Matrix((
+            mat = Matrix((
                 (keyframe[0], keyframe[1], keyframe[2], keyframe[3]),
                 (keyframe[4], keyframe[5], keyframe[6], keyframe[7]),
                 (keyframe[8], keyframe[9], keyframe[10], keyframe[11]),
@@ -361,23 +362,19 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
             obj = bpy.data.objects.new(layer['name'], obj_data)
             added_objects.append(obj)
 
-            layer_source = data['sources'][layer['source']] if 'source' in layer else None
-
-            layer_center = (layer_source['width'] / 2, layer_source['height'] / 2) if layer_source is not None else (0.0, 0.0)
-
             innermost_objects_by_index[layer['index']] = obj
 
             transform_target = obj
 
             if data['transformsBaked']:
                 # These are used to swap Z and -Y. Not sure this is the best way to do it.
-                pre_quat = mathutils.Quaternion((1.0, 0.0, 0.0), radians(-90.0))
-                post_quat = mathutils.Quaternion((1.0, 0.0, 0.0), radians(180.0 if layer['type'] == 'camera' else 90.0))
+                pre_quat = Quaternion((1.0, 0.0, 0.0), radians(-90.0))
+                post_quat = Quaternion((1.0, 0.0, 0.0), radians(180.0 if layer['type'] == 'camera' else 90.0))
                 def transform(loc, rot, scale):
                     if self.comp_center_to_origin:
-                        loc -= mathutils.Vector((data['comp']['width'] * 0.5, data['comp']['height'] * 0.5, 0.0))
-                    loc = mathutils.Vector((loc[0] * scale_factor, loc[2] * scale_factor, -loc[1] * scale_factor))
-                    scale = mathutils.Vector((scale[0], scale[2], scale[1]))
+                        loc -= Vector((data['comp']['width'] * 0.5, data['comp']['height'] * 0.5, 0.0))
+                    loc = Vector((loc[0] * scale_factor, loc[2] * scale_factor, -loc[1] * scale_factor))
+                    scale = Vector((scale[0], scale[2], scale[1]))
                     rot = pre_quat @ rot @ post_quat
                     return loc, rot, scale
 
@@ -509,9 +506,9 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
 
                             prev_angle = None
                             for i, (x, y, z) in enumerate(zip(*(channel['keyframes'] for channel in layer['orientation']['channels']))):
-                                angle = mathutils.Matrix.Identity(3)
+                                angle = Matrix.Identity(3)
                                 # Apply AE orientation
-                                angle.rotate(mathutils.Euler((radians(x), radians(z), radians(-y)), 'YZX'))
+                                angle.rotate(Euler((radians(x), radians(z), radians(-y)), 'YZX'))
                                 # Prevent discontinuities in the rotation which can mess up motion blur.
                                 # Euler angles also have a make_compatible function, but it doesn't always work, so it's necessary to use quaternions.
                                 quat = angle.to_quaternion()
@@ -616,6 +613,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                     )
 
             if layer['type'] == 'camera':
+                obj_data.sensor_fit = 'VERTICAL'
                 self.import_property(
                     obj=obj_data,
                     data_path='lens',
@@ -623,8 +621,8 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                     prop_data=layer['zoom']['channels'][0],
                     comp_framerate=data['comp']['frameRate'],
                     desired_framerate=desired_framerate,
-                    # 36 = default camera sensor size
-                    mul=36 / data['comp']['width']
+                    # 24 = default camera sensor height
+                    mul=24 / data['comp']['height']
                 )
 
             imported_objects.append((transform_target, layer))
@@ -651,6 +649,21 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
             render_settings = context.scene.render
             render_settings.resolution_x = data['comp']['width']
             render_settings.resolution_y = data['comp']['height']
+
+            pixel_aspect = data['comp']['pixelAspect']
+            # Check whether the pixel aspect ratio can be expressed precisely as a ratio of smallish integers
+            pixel_aspect_frac = Fraction(pixel_aspect).limit_denominator(1000)
+            if isclose(float(pixel_aspect_frac), pixel_aspect_frac, abs_tol=1e-11):
+                render_settings.pixel_aspect_x = pixel_aspect_frac.numerator
+                render_settings.pixel_aspect_y = pixel_aspect_frac.denominator
+            else:
+                # Blender clamps pixel aspect X and Y to never go below 1
+                if pixel_aspect > 1:
+                    render_settings.pixel_aspect_x = pixel_aspect
+                    render_settings.pixel_aspect_y = 1
+                else:
+                    render_settings.pixel_aspect_x = 1
+                    render_settings.pixel_aspect_y = 1 / pixel_aspect
 
         if self.adjust_frame_start_end:
             # Compensate for floating-point error
