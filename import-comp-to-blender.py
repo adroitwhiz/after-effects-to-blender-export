@@ -622,7 +622,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
             pixel_aspect = data['comp']['pixelAspect']
             # Check whether the pixel aspect ratio can be expressed precisely as a ratio of smallish integers
             pixel_aspect_frac = Fraction(pixel_aspect).limit_denominator(1000)
-            if isclose(float(pixel_aspect_frac), pixel_aspect_frac, abs_tol=1e-11):
+            if isclose(float(pixel_aspect_frac), pixel_aspect, abs_tol=1e-11):
                 render_settings.pixel_aspect_x = pixel_aspect_frac.numerator
                 render_settings.pixel_aspect_y = pixel_aspect_frac.denominator
             else:
