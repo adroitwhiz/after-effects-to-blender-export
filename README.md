@@ -61,6 +61,12 @@ There are several import options on the righthand pane of the file dialog:
 #### Scale Factor
 This is the factor by which all units in the imported composition will be scaled. The default value, 0.01, maps one pixel to one centimeter, which matches Cinema 4D.
 
+#### Handle FPS
+This determines how a composition with a different frame rate from the Blender scene's frame rate will be handled. The options are:
+- Preserve Frame Numbers: Keep the frame numbers the same, without changing the Blender scene's frame rate, if frame rates differ
+- Use Comp Frame Rate: Set the Blender scene's frame rate to match that of the imported composition
+- Remap Frame Times: If the Blender scene's frame rate differs, preserve the speed of the imported composition by changing frame numbers
+
 #### Comp Center to Origin
 If checked, this will position objects relative to Blender's origin rather than the composition center (which is down and to the right of Blender's origin).
 
@@ -73,9 +79,6 @@ If checked, this will set the scene's render resolution to the resolution of the
 
 #### Create New Collection
 If checked, this will place all imported objects into a new collection.
-
-#### Adjust Frame Start/End
-If checked, this will adjust the "Start"/"End" frame range in the timeline to the imported composition's work area.
 
 Once the desired options have been set, navigate to the .json file exported via the After Effects script, and click Import AE Comp:
 

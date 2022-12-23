@@ -12,7 +12,7 @@ bl_info = {
     "name": "Import After Effects Composition",
     "description": "Import layers from an After Effects composition into Blender",
     "author": "adroitwhiz",
-    "version": (0, 3, 5),
+    "version": (0, 3, 6),
     "blender": (2, 91, 0),
     "category": "Import-Export",
     "wiki_url": "https://github.com/adroitwhiz/after-effects-to-blender-export/",
@@ -46,6 +46,33 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         default=0.01
     )
 
+    handle_framerate: bpy.props.EnumProperty(
+        items=[
+            (
+                "preserve_frame_numbers",
+                "Preserve Frame Numbers",
+                "Keep the frame numbers the same, without changing the Blender scene's frame rate, if frame rates differ",
+                "",
+                0
+            ), (
+                "set_framerate",
+                "Use Comp Frame Rate",
+                "Set the Blender scene's frame rate to match that of the imported composition",
+                "",
+                1
+            ), (
+                "remap_times",
+                "Remap Frame Times",
+                "If the Blender scene's frame rate differs, preserve the speed of the imported composition by changing frame numbers",
+                "",
+                2
+            ),
+        ],
+        name="Handle FPS",
+        description="How to handle the frame rate of the imported composition differing from the Blender scene's frame rate",
+        default="preserve_frame_numbers"
+    )
+
     comp_center_to_origin: bpy.props.BoolProperty(
         name="Comp Center to Origin",
         description="Translate everything over so that the composition center is at (0, 0, 0) (the origin)",
@@ -68,33 +95,6 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         name="Adjust Frame Start/End",
         description="Adjust the Start and End frames of the playback/rendering range to the imported composition's work area.",
         default=False
-    )
-
-    handle_framerate: bpy.props.EnumProperty(
-        items=[
-            (
-                "preserve_frame_numbers",
-                "Preserve Frame Numbers",
-                "Keep the frame numbers the same, without changing the Blender scene's framerate, if framerates differ",
-                "",
-                0
-            ), (
-                "set_framerate",
-                "Set Scene Framerate to Comp Framerate",
-                "Set the Blender scene's framerate to match that of the imported composition",
-                "",
-                1
-            ), (
-                "remap_times",
-                "Remap Frame Times",
-                "If the Blender scene's framerate differs, preserve the speed of the imported composition by changing frame numbers",
-                "",
-                2
-            ),
-        ],
-        name="Handle Framerate",
-        description="How to handle the framerate of the imported composition differing from the Blender scene's framerate",
-        default="preserve_frame_numbers"
     )
 
     def make_or_get_fcurve(self, action: 'bpy.types.Action', data_path: str, index=-1) -> 'FCurve':
@@ -645,18 +645,21 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
 
     def draw(self, context: 'bpy.types.Context'):
         layout = self.layout
-        # Give the checkboxes room to breathe
-        layout.use_property_split = False
+        layout.use_property_split = True
+        layout.use_property_decorate = False
 
-        sfile = context.space_data
-        operator = sfile.active_operator
+        col = layout.column()
+        col.prop(self, 'scale_factor')
+        col.prop(self, 'handle_framerate')
 
-        layout.prop(operator, 'scale_factor')
-        layout.prop(operator, 'comp_center_to_origin')
-        layout.prop(operator, 'use_comp_resolution')
-        layout.prop(operator, 'create_new_collection')
-        layout.prop(operator, 'handle_framerate')
-        layout.prop(operator, 'adjust_frame_start_end')
+        col = layout.column()
+        # Give the checkboxes room to breathe. Ideally, this wouldn't be necessary, but the default width is just a few
+        # pixels too small and truncates the labels.
+        col.use_property_split = False
+        col.prop(self, 'comp_center_to_origin')
+        col.prop(self, 'use_comp_resolution')
+        col.prop(self, 'create_new_collection')
+        col.prop(self, 'adjust_frame_start_end')
 
 def menu_func_import(self, context):
     self.layout.operator(ImportAEComp.bl_idname, text="After Effects composition data, converted (.json)")
