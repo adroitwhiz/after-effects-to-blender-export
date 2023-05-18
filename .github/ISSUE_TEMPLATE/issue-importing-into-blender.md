@@ -29,5 +29,9 @@ Steps to reproduce the behavior; e.g.
 **Test Case**
 <!-- If possible, include the .json file that causes the issue. -->
 
+**Platform Info**
+- <!-- Operating system + version -->
+- <!-- Blender version -->
+
 **Additional context**
 <!-- Add any other context about the problem here. -->

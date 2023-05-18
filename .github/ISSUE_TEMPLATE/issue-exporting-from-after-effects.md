@@ -30,5 +30,9 @@ Steps to reproduce the behavior; e.g.
 **Test Case**
 <!-- If possible, include the .aep file that causes the issue. -->
 
+**Platform Info**
+- <!-- Operating system + version -->
+- <!-- After Effects version -->
+
 **Additional context**
 <!-- Add any other context about the problem here. -->
