@@ -80,6 +80,9 @@ If checked, this will set the scene's render resolution to the resolution of the
 #### Create New Collection
 If checked, this will place all imported objects into a new collection.
 
+#### Adjust Frame Start/End
+If checked, this will adjust the Start and End frames of the Blender scene's playback/rendering range to those of the imported composition's work area.
+
 Once the desired options have been set, navigate to the .json file exported via the After Effects script, and click Import AE Comp:
 
 ![Blender step 4](docs/blender-step4.png)
