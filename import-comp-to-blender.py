@@ -163,6 +163,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         start_frame: int,
         comp_framerate: float,
         desired_framerate: float,
+        supersampling_rate: int,
         mul = 1.0,
         add = 0.0):
         '''Import a given keyframe channel in "calculated"/baked format onto a given F-curve.
@@ -173,13 +174,14 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
             start_frame (int): The frame number at which the keyframe data starts.
             comp_framerate (float): The comp's framerate.
             desired_framerate (float): The desired framerate.
+            supersampling_rate (int): Multiplier for the framerate; this many keyframes will be created per frame.
             mul (int, optional): Multiply all keyframes by this value. Defaults to 1.
             add (int, optional): Add this value to all keyframes. Defaults to 0.
         '''
         fcurve.keyframe_points.add(len(keyframes))
         for i, keyframe in enumerate(keyframes):
             k = fcurve.keyframe_points[i]
-            k.co_ui = [((i + start_frame) * desired_framerate) / comp_framerate, keyframe * mul + add]
+            k.co_ui = [(((i / supersampling_rate) + start_frame) * desired_framerate) / comp_framerate, keyframe * mul + add]
             k.interpolation = 'LINEAR'
 
     def ensure_action_exists(self, obj: 'bpy.types.Object'):
@@ -233,6 +235,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                     prop_data['startFrame'],
                     comp_framerate,
                     desired_framerate,
+                    prop_data['supersampling'],
                     mul,
                     add
                 )
@@ -274,6 +277,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
 
         keyframes = data['keyframes']
         start_frame = data['startFrame']
+        supersampling_rate = data['supersampling']
 
         for fcurve in chain(loc_fcurves, rot_fcurves, scale_fcurves):
             fcurve.keyframe_points.add(len(keyframes))
@@ -295,7 +299,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                 rot.make_compatible(prev_rot)
             prev_rot = rot
 
-            kx = ((i + start_frame) * desired_framerate) / comp_framerate
+            kx = (((i / supersampling_rate) + start_frame) * desired_framerate) / comp_framerate
             for j in range(3):
                 k = loc_fcurves[j].keyframe_points[i]
                 k.co_ui = [kx, loc[j]]
@@ -352,8 +356,8 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
             data = json.load(f)
 
         fileVersion = data.get('version', 0)
-        if fileVersion != 2:
-            if fileVersion > 2:
+        if fileVersion < 2 or fileVersion > 3:
+            if fileVersion > 3:
                 warning = 'This file is too new. Update this add-on.'
             else:
                 warning = 'This file is too old. Re-export it using a newer version of this add-on.'

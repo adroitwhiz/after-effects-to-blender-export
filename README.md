@@ -44,6 +44,9 @@ When checked, this ensures that only the layers you select will be exported. If 
 #### Bake transforms
 When checked, all layer transforms will be "baked" in After Effects instead of being imported keyframes-and-all into Blender. In case of a bug in the importer, complicated scenarios (like a 3D layer parented to a 2D layer parented to a 3D layer), or unimplemented features (like Auto-Orient), this may be necessary.
 
+#### Transform sampling rate
+For those properties with keyframes that cannot be directly imported and must be "baked" (see above), this setting controls how many times they will be sampled per frame. The default setting of 1 is usually fine, but if there's some extremely fast motion (most common when simulating camera shake with a "wiggle" expression), and/or you want accurate motion blur trails, you can increase this.
+
 ## Installation / Usage (Blender)
 
 To install the Blender add-on, [download](https://github.com/adroitwhiz/after-effects-to-blender-export/raw/master/import-comp-to-blender.py), install, and then enable it via the add-on preferences:

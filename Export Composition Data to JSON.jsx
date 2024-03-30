@@ -844,7 +844,7 @@ function writeSettingsFile(settings, version) {
 }
 
 
-    var fileVersion = 2;
+    var fileVersion = 3;
     var settingsVersion = '0.2';
     var settingsFilePath = Folder.userData.fullName + '/cam-export-settings.json';
 
@@ -908,6 +908,16 @@ function writeSettingsFile(settings, version) {
                             enabled: opts.bakeTransforms
                         })
                     }),
+                    frameSuperSampling: c.Group({
+                        label: c.StaticText({
+                            text: 'Transform sampling rate',
+                            helpTip: 'Number of keyframes to generate per frame, for baked transforms and those which cannot be exported directly. Useful for e.g. very fast "wiggle" expressions where you want to capture all the motion blur.'
+                        }),
+                        value: c.EditText({
+                            text: opts.frameSuperSampling,
+                            minimumSize: [40, 0]
+                        })
+                    })
                 }),
                 separator: c.Group({ preferredSize: ['', 3] }),
                 buttons: c.Group({
@@ -950,6 +960,7 @@ function writeSettingsFile(settings, version) {
             },
             selectedLayersOnly: window.settings.selectedLayersOnly,
             bakeTransforms: window.settings.bakeTransforms,
+            frameSuperSampling: window.settings.frameSuperSampling,
             plugButton: window.buttons.plug.link,
             exportButton: window.buttons.doExport,
             cancelButton: window.buttons.cancel
@@ -993,14 +1004,22 @@ function writeSettingsFile(settings, version) {
                         break;
                     }
             }
+            var frameSuperSampling = parseInt(controls.frameSuperSampling.value.text);
+            if (isNaN(frameSuperSampling) || frameSuperSampling < 1 || frameSuperSampling > 128) {
+                frameSuperSampling = 1;
+            }
             return {
                 savePath: controls.savePath.text,
                 timeRange: timeRange,
                 selectedLayersOnly: controls.selectedLayersOnly.value.value,
+                frameSuperSampling: frameSuperSampling,
                 bakeTransforms: controls.bakeTransforms.value.value
             };
         }
 
+        /**
+         * Apply previously-saved settings to the newly-created dialog
+         */
         function applySettings(settings) {
             if (!settings) return;
             controls.savePath.text = settings.savePath;
@@ -1009,6 +1028,9 @@ function writeSettingsFile(settings, version) {
                 controls.timeRange[button].value = button === settings.timeRange;
             }
             controls.bakeTransforms.value.value = settings.bakeTransforms;
+            if (typeof settings.frameSuperSampling === 'number') {
+                controls.frameSuperSampling.value.text = settings.frameSuperSampling;
+            }
         }
 
         controls.plugButton.onClick = function() {
@@ -1158,7 +1180,8 @@ function writeSettingsFile(settings, version) {
                 })
             },
             {
-                selectionExists: activeComp.selectedLayers.length > 0
+                selectionExists: activeComp.selectedLayers.length > 0,
+                frameSuperSampling: 1
             }
         );
         d.window.show();
@@ -1308,8 +1331,9 @@ function writeSettingsFile(settings, version) {
 
             var keyframes = [];
 
-            for (var i = startFrame; i < endFrame; i++) {
-                var time =  i / activeComp.frameRate;
+            for (var i = 0, n = (endFrame - startFrame) * settings.frameSuperSampling; i < n; i++) {
+                var frame = (i / settings.frameSuperSampling) + startFrame;
+                var time =  frame / activeComp.frameRate;
                 var point1Val = evalPoint1.property(1).valueAtTime(time, false /* preExpression */);
                 var point2Val = evalPoint2.property(1).valueAtTime(time, false /* preExpression */);
                 var point3Val = evalPoint3.property(1).valueAtTime(time, false /* preExpression */);
@@ -1325,7 +1349,8 @@ function writeSettingsFile(settings, version) {
 
             return {
                 startFrame: startFrame,
-                keyframes: keyframes
+                keyframes: keyframes,
+                supersampling: settings.frameSuperSampling
             }
         }
 
@@ -1409,12 +1434,16 @@ function writeSettingsFile(settings, version) {
                         exportedProp.channels[i + channelOffset].keyframes = [];
                     }
 
-                    for (var i = startFrame; i < endFrame; i++) {
-                        var time =  i / activeComp.frameRate;
+                    for (var i = 0, n = (endFrame - startFrame) * settings.frameSuperSampling; i < n; i++) {
+                        var frame = (i / settings.frameSuperSampling) + startFrame;
+                        var time =  frame / activeComp.frameRate;
                         var propVal = prop.valueAtTime(time, false /* preExpression */);
                         for (var j = 0; j < numDimensions; j++) {
                             exportedProp.channels[j + channelOffset].keyframes.push(Array.isArray(propVal) ? propVal[j] : propVal);
                         }
+                    }
+                    for (var j = 0; j < numDimensions; j++) {
+                        exportedProp.channels[j + channelOffset].supersampling = settings.frameSuperSampling;
                     }
                 }
             } else {
