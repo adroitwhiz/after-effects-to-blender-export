@@ -1,26 +1,3 @@
-
-/*
-Copyright (c) 2020-2022 adroitwhiz
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of
-this software and associated documentation files (the "Software"), to deal in
-the Software without restriction, including without limitation the rights to
-use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software is furnished to do so,
-subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
-FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
-COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/
-
-
 {
     // @include 'lib/util.js'
 
@@ -91,14 +68,27 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 }),
                 separator: c.Group({ preferredSize: ['', 3] }),
                 buttons: c.Group({
-                    alignment: 'right',
+                    alignment: 'fill',
+                    plug: c.Group({
+                        text: c.StaticText({
+                            text: 'Copyright © 2020-2024 adroitwhiz. All Rights Reserved.',
+                            alignment: ['fill', 'center']
+                        }),
+                        link: c.Button({
+                            text: '↗',
+                            helpTip: 'Visit homepage',
+                            maximumSize: [20, 20]
+                        })
+                    }),
                     doExport: c.Button({
                         properties: { name: 'ok' },
-                        text: 'Export'
+                        text: 'Export',
+                        alignment: ['right', 'center']
                     }),
                     cancel: c.Button({
                         properties: { name: 'cancel' },
-                        text: 'Cancel'
+                        text: 'Cancel',
+                        alignment: ['right', 'center']
                     })
                 })
             })
@@ -117,6 +107,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             },
             selectedLayersOnly: window.settings.selectedLayersOnly,
             bakeTransforms: window.settings.bakeTransforms,
+            plugButton: window.buttons.plug.link,
             exportButton: window.buttons.doExport,
             cancelButton: window.buttons.cancel
         };
@@ -175,6 +166,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 controls.timeRange[button].value = button === settings.timeRange;
             }
             controls.bakeTransforms.value.value = settings.bakeTransforms;
+        }
+
+        controls.plugButton.onClick = function() {
+            var url = 'https://github.com/adroitwhiz/after-effects-to-blender-export';
+            system.callSystem(($.os.indexOf('Win') !== -1 ? 'explorer' : 'open') + ' "' + url + '"');
         }
 
         controls.saveBrowse.onClick = function() {
