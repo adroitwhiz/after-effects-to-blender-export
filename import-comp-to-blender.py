@@ -376,7 +376,16 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
             desired_framerate = data['comp']['frameRate']
 
         if self.handle_framerate == 'set_framerate':
-            context.scene.render.fps = data['comp']['frameRate']
+            comp_framerate = data['comp']['frameRate']
+            if int(comp_framerate) == comp_framerate:
+                context.scene.render.fps = comp_framerate
+                context.scene.render.fps_base = 1.0
+            else:
+                ceil_framerate = ceil(comp_framerate)
+                # round to 1.001, the proper timebase
+                fps_base = round(ceil_framerate / comp_framerate, 5)
+                context.scene.render.fps = ceil_framerate
+                context.scene.render.fps_base = fps_base
 
         for layer in data['layers']:
             if layer['type'] == 'av':
