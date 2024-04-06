@@ -1,18 +1,19 @@
 import json
 import bpy
-from bpy.types import FCurve
+from bpy.types import FCurve, Camera, TimelineMarker, Object
 from typing import Callable, Optional, Tuple
 from bpy_extras.io_utils import ImportHelper
 from mathutils import Euler, Matrix, Quaternion, Vector
 from math import radians, pi, floor, ceil, isclose
 from fractions import Fraction
 from itertools import chain
+from dataclasses import dataclass
 
 bl_info = {
     "name": "Import After Effects Composition",
     "description": "Import layers from an After Effects composition into Blender",
     "author": "adroitwhiz",
-    "version": (0, 4, 0),
+    "version": (0, 5, 0),
     "blender": (2, 91, 0),
     "category": "Import-Export",
     "doc_url": "https://github.com/adroitwhiz/after-effects-to-blender-export/",
@@ -26,6 +27,13 @@ bl_info = {
 if bpy.app.version < bl_info['blender']:
     min_blender_version_string = '.'.join(str(ver) for ver in bl_info['blender'])
     raise Exception(f"This add-on is incompatible with Blender versions older than {min_blender_version_string}. Please update to a newer version of Blender.")
+
+@dataclass
+class CameraLayer:
+    """Camera layer; used for Cameras to Markers functionality"""
+    camera: Object
+    inFrame: int
+    outFrame: int
 
 class ImportAEComp(bpy.types.Operator, ImportHelper):
     """Import layers from an After Effects composition, as exported by the corresponding AE script"""
@@ -94,6 +102,12 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
     adjust_frame_start_end: bpy.props.BoolProperty(
         name="Adjust Frame Start/End",
         description="Adjust the Start and End frames of the playback/rendering range to the imported composition's work area.",
+        default=False
+    )
+
+    cameras_to_markers: bpy.props.BoolProperty(
+        name="Cameras to Markers",
+        description="Create timeline markers and bind them to the imported camera layers' in/out points.",
         default=False
     )
 
@@ -365,6 +379,8 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
             return {'CANCELLED'}
 
         added_objects = []
+        cameras: list[CameraLayer] = []
+        camera_in_out_frames: list[int] = []
 
         imported_objects = []
         innermost_objects_by_index = dict()
@@ -408,6 +424,14 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
             elif layer['type'] == 'unknown':
                 obj_data = None
             obj = bpy.data.objects.new(layer['name'], obj_data)
+            if layer['type'] == 'camera' and 'enabled' in layer and layer['enabled'] and 'inFrame' in layer and 'outFrame' in layer:
+                # If this is an enabled camera layer, add it to the "Camera to Markers" data to be imported
+                # Older files don't have inFrame/outFrame/enabled properties, so confirm their presence
+                # The frames are calculated by multiplying floating-point seconds values by the framerate, so they're
+                # often a bit off and need to be rounded to the nearest frame
+                cameras.append(CameraLayer(obj, round(layer['inFrame']), round(layer['outFrame'])))
+                camera_in_out_frames.append(round(layer['inFrame']))
+                camera_in_out_frames.append(round(layer['outFrame']))
             added_objects.append(obj)
 
             innermost_objects_by_index[layer['index']] = obj
@@ -654,6 +678,34 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
             # After Effects' work area excludes the end point; Blender's includes it. Subtract 1 from the end.
             context.scene.frame_end = ceil(data['comp']['workArea'][1] * desired_framerate - 1e-13) - 1
 
+        if self.cameras_to_markers:
+            # Keep track of existing markers to avoid adding new ones in the same place
+            existing_markers: dict[int, TimelineMarker] = dict()
+            for marker in context.scene.timeline_markers.values():
+                existing_markers[marker.frame] = marker
+
+            camera_in_out_frames.sort()
+            prev_enabled_camera = None
+
+            # Check all the camera layer in/out points, since those are the only places a camera change can occur
+            for frame in camera_in_out_frames:
+                # Find the topmost camera layer
+                enabled_camera = None
+                for camera in cameras:
+                    if camera.inFrame <= frame and camera.outFrame > frame:
+                        enabled_camera = camera
+                        break
+
+                # If the camera changed, add or update the marker at that frame
+                if enabled_camera != prev_enabled_camera:
+                    prev_enabled_camera = enabled_camera
+                    if enabled_camera is None:
+                        continue
+                    marker = existing_markers.get(frame)
+                    if marker is None:
+                        marker = context.scene.timeline_markers.new(f'M_{enabled_camera.camera.name}', frame=frame)
+                    marker.camera = enabled_camera.camera
+
         return {'FINISHED'}
 
     def draw(self, context: 'bpy.types.Context'):
@@ -673,6 +725,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         col.prop(self, 'use_comp_resolution')
         col.prop(self, 'create_new_collection')
         col.prop(self, 'adjust_frame_start_end')
+        col.prop(self, 'cameras_to_markers')
 
 def menu_func_import(self, context):
     self.layout.operator(ImportAEComp.bl_idname, text="After Effects composition data, converted (.json)")

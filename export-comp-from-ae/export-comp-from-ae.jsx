@@ -649,7 +649,10 @@
                 name: layer.name,
                 type: layerType,
                 index: layer.index,
-                parentIndex: layer.parent ? layer.parent.index : null
+                parentIndex: layer.parent ? layer.parent.index : null,
+                inFrame: layer.inPoint * activeComp.frameRate,
+                outFrame: layer.outPoint * activeComp.frameRate,
+                enabled: layer.enabled
             };
 
             if (settings.bakeTransforms) {

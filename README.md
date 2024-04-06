@@ -86,6 +86,9 @@ If checked, this will place all imported objects into a new collection.
 #### Adjust Frame Start/End
 If checked, this will adjust the Start and End frames of the Blender scene's playback/rendering range to those of the imported composition's work area.
 
+#### Cameras to Markers
+If checked, this will create timeline markers and bind them to the imported camera layers' in/out points. This means that Blender will automatically switch between cameras the same way After Effects does.
+
 Once the desired options have been set, navigate to the .json file exported via the After Effects script, and click Import AE Comp:
 
 ![Blender step 4](docs/blender-step4.png)
