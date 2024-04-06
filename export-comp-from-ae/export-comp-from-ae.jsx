@@ -196,7 +196,17 @@
         }
 
         controls.saveBrowse.onClick = function() {
-            var savePath = File.saveDialog('Choose the path and name for the layer data file', 'Layer data:*.json').fsName;
+            var savePath;
+            // Use existing file path if set
+            if (controls.savePath.text !== '') {
+                savePath = new File(controls.savePath.text).saveDlg('Choose the path and name for the layer data file', 'Layer data:*.json').fsName;
+            } else {
+                savePath = File.saveDialog('Choose the path and name for the layer data file', 'Layer data:*.json').fsName;
+            }
+            // MacOS doesn't support a filter in the save dialog, so manually override the extension to .json
+            if (!/\.json$/.test(savePath)) {
+                savePath = savePath.replace(/(\.\w+)?$/, '.json');
+            }
             controls.savePath.text = savePath;
         }
 
