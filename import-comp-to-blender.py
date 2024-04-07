@@ -13,11 +13,11 @@ bl_info = {
     "name": "Import After Effects Composition",
     "description": "Import layers from an After Effects composition into Blender",
     "author": "adroitwhiz",
-    "version": (0, 5, 0),
+    "version": (0, 5, 1),
     "blender": (2, 91, 0),
     "category": "Import-Export",
     "doc_url": "https://github.com/adroitwhiz/after-effects-to-blender-export/",
-    "tracker_url": "https://github.com/adroitwhiz/after-effects-to-blender-export/issues/new/"
+    "tracker_url": "https://github.com/adroitwhiz/after-effects-to-blender-export/issues/new?assignees=&labels=bug%2C+import&projects=&template=issue-importing-into-blender.md"
 }
 
 # Blender will warn users if they enable this addon in an older version of Blender than is officially supported,
