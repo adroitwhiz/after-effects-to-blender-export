@@ -599,6 +599,7 @@
                         exportedProp.channels[i + channelOffset].keyframesFormat = 'calculated';
                         exportedProp.channels[i + channelOffset].startFrame = startFrame;
                         exportedProp.channels[i + channelOffset].keyframes = [];
+                        exportedProp.channels[i + channelOffset].supersampling = settings.frameSuperSampling;
                     }
 
                     for (var i = 0, n = (endFrame - startFrame) * settings.frameSuperSampling; i < n; i++) {
@@ -608,9 +609,6 @@
                         for (var j = 0; j < numDimensions; j++) {
                             exportedProp.channels[j + channelOffset].keyframes.push(Array.isArray(propVal) ? propVal[j] : propVal);
                         }
-                    }
-                    for (var j = 0; j < numDimensions; j++) {
-                        exportedProp.channels[j + channelOffset].supersampling = settings.frameSuperSampling;
                     }
                 }
             } else {
