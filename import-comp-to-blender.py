@@ -13,7 +13,7 @@ bl_info = {
     "name": "Import After Effects Composition",
     "description": "Import layers from an After Effects composition into Blender",
     "author": "adroitwhiz",
-    "version": (0, 5, 1),
+    "version": (0, 5, 2),
     "blender": (2, 91, 0),
     "category": "Import-Export",
     "doc_url": "https://github.com/adroitwhiz/after-effects-to-blender-export/",
@@ -370,7 +370,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
             data = json.load(f)
 
         fileVersion = data.get('version', 0)
-        if fileVersion < 2 or fileVersion > 3:
+        if fileVersion != 3:
             if fileVersion > 3:
                 warning = 'This file is too new. Update this add-on.'
             else:
