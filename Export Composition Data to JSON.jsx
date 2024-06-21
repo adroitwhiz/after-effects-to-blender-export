@@ -2,7 +2,7 @@
 Copyright © 2020-2024 adroitwhiz
 
 Common Public Attribution License Version 1.0 (CPAL)
-
+;
 1. “Definitions”
 
 1.0.1 “Commercial Use” means distribution or otherwise making the Covered Code available to a third party.
