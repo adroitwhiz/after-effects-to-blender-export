@@ -13,7 +13,7 @@ bl_info = {
     "name": "Import After Effects Composition",
     "description": "Import layers from an After Effects composition into Blender",
     "author": "adroitwhiz",
-    "version": (0, 5, 2),
+    "version": (0, 5, 3),
     "blender": (2, 91, 0),
     "category": "Import-Export",
     "doc_url": "https://github.com/adroitwhiz/after-effects-to-blender-export/",
@@ -249,7 +249,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                     prop_data['startFrame'],
                     comp_framerate,
                     desired_framerate,
-                    prop_data['supersampling'],
+                    prop_data.get('supersampling', 1),
                     mul,
                     add
                 )
@@ -291,7 +291,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
 
         keyframes = data['keyframes']
         start_frame = data['startFrame']
-        supersampling_rate = data['supersampling']
+        supersampling_rate = data.get('supersampling', 1)
 
         for fcurve in chain(loc_fcurves, rot_fcurves, scale_fcurves):
             fcurve.keyframe_points.add(len(keyframes))
@@ -405,7 +405,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
 
         for layer in data['layers']:
             if layer['type'] == 'av':
-                if layer['nullLayer']:
+                if 'nullLayer' in layer and layer['nullLayer']:
                     obj_data = None
                 else:
                     width = data['sources'][layer['source']]['width'] * scale_factor
