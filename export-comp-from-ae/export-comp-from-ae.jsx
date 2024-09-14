@@ -170,7 +170,7 @@
                 timeRange: timeRange,
                 selectedLayersOnly: controls.selectedLayersOnly.value.value,
                 frameSuperSampling: frameSuperSampling,
-                bakeTransforms: controls.bakeTransforms.value.value
+                bakeTransforms: !!controls.bakeTransforms.value.value
             };
         }
 
