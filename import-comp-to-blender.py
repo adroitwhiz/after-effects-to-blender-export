@@ -1,6 +1,6 @@
 import json
 import bpy
-from bpy.types import FCurve, Camera, TimelineMarker, Object
+from bpy.types import Action, FCurve, Camera, TimelineMarker, Object
 from typing import Callable, Optional, Tuple
 from bpy_extras.io_utils import ImportHelper
 from mathutils import Euler, Matrix, Quaternion, Vector
@@ -13,8 +13,8 @@ bl_info = {
     "name": "Import After Effects Composition",
     "description": "Import layers from an After Effects composition into Blender",
     "author": "adroitwhiz",
-    "version": (0, 5, 3),
-    "blender": (2, 91, 0),
+    "version": (0, 6, 0),
+    "blender": (4, 4, 0),
     "category": "Import-Export",
     "doc_url": "https://github.com/adroitwhiz/after-effects-to-blender-export/",
     "tracker_url": "https://github.com/adroitwhiz/after-effects-to-blender-export/issues/new?assignees=&labels=bug%2C+import&projects=&template=issue-importing-into-blender.md"
@@ -34,6 +34,74 @@ class CameraLayer:
     camera: Object
     inFrame: int
     outFrame: int
+
+'''
+Creates and maps imported AE objects to animation action slots. Some AE objects may be imported as nested sets of
+Blender objects, in which case both of them should get different slots in the same action.
+
+Once Blender supports layering actions, we will likely be able to avoid encoding orientation transforms as a set of two
+nested objects and just stack multiple action layers instead.
+'''
+class ActionSlotManager:
+    actions_by_ae_object: dict[str, Action]
+    slots_by_bpy_object: dict[str, 'bpy.types.ActionSlot']
+
+    def __init__(self):
+        self.actions_by_ae_object = dict()
+        self.slots_by_bpy_object = dict()
+
+    def fcurve_for_data_path(self, dst_obj: 'bpy.types.Object', ae_obj: dict, data_path: str, index = -1) -> 'FCurve':
+        '''
+        Returns an F-curve for a given data path on the specified Blender object, which corresponds to a certain After
+        Effects layer. Creates one if it does not exist.
+
+        Args:
+            dst_obj: The Blender object to get or create the F-curve on.
+
+            ae_obj: The After Effects layer that this Blender object corresponds to. Note that more than one Blender
+            object may correspond to the same After Effects layer, in which case it will be assigned to a different
+            action slot.
+
+            data_path: The Blender object's datapath which the F-curve controls.
+
+            index (int, optional): The index of the property, for multidimensional properties like location, rotation,
+            and scale.
+        '''
+
+        ae_name = ae_obj['name']
+
+        # Create the action for this AE layer if it does not exist
+        try:
+            action = self.actions_by_ae_object[ae_name]
+            layer = action.layers.values()[0]
+            strip = layer.strips.values()[0]
+        except KeyError:
+            action = bpy.data.actions.new(f'AE {ae_name} Action')
+            layer = action.layers.new('Layer')
+            strip = layer.strips.new(type='KEYFRAME')
+            self.actions_by_ae_object[ae_name] = action
+
+        # Get the slot within the action for this specific Blender object
+        try:
+            slot = self.slots_by_bpy_object[dst_obj.name]
+        except KeyError:
+            slot = action.slots.new(id_type=dst_obj.id_type, name=dst_obj.name)
+            if dst_obj.animation_data is None:
+                dst_obj.animation_data_create()
+            dst_obj.animation_data.action = action
+            dst_obj.animation_data.action_slot = slot
+
+            self.slots_by_bpy_object[dst_obj.name] = slot
+
+        channelbag = strip.channelbag(slot, ensure=True)
+
+        fc = channelbag.fcurves.find(data_path, index=index)
+        if fc is None:
+            fc = channelbag.fcurves.new(data_path, index=index)
+
+        return fc
+
+
 
 class ImportAEComp(bpy.types.Operator, ImportHelper):
     """Import layers from an After Effects composition, as exported by the corresponding AE script"""
@@ -111,25 +179,6 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         default=False
     )
 
-    def make_or_get_fcurve(self, action: 'bpy.types.Action', data_path: str, index=-1) -> 'FCurve':
-        '''Returns an F-curve controlling a certain datapath on the given action, creating one if it does not already exist.
-
-        Args:
-            action (bpy.types.Action): The action to return an F-curve from
-            data_path (str): The datapath which the F-curve controls
-            index (int, optional): The index of the property, for multidimensional properties like location, rotation, and scale.
-
-        Returns:
-            FCurve: The F-curve controlling the given datapath
-        '''
-        for fc in action.fcurves:
-            if (fc.data_path != data_path):
-                continue
-            if index<0 or index==fc.array_index:
-                return fc
-        # the action didn't have the fcurve we needed, yet
-        return action.fcurves.new(data_path, index=index)
-
     def import_bezier_keyframe_channel(self, fcurve: 'FCurve', keyframes, framerate: float, mul = 1.0, add = 0.0):
         '''Imports a given keyframe channel in Bezier format onto a given F-curve.
 
@@ -198,20 +247,11 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
             k.co_ui = [(((i / supersampling_rate) + start_frame) * desired_framerate) / comp_framerate, keyframe * mul + add]
             k.interpolation = 'LINEAR'
 
-    def ensure_action_exists(self, obj: 'bpy.types.Object'):
-        '''Create animation data and an Action for a given object if it does not already exist.
-
-        Args:
-            obj (bpy.types.Object): The object to create animation data and an Action for.
-        '''
-        if obj.animation_data is None:
-            obj.animation_data_create()
-        if obj.animation_data.action is None:
-            obj.animation_data.action = bpy.data.actions.new(obj.name + 'Action')
-
     def import_property(
         self,
+        slot_mgr: ActionSlotManager,
         obj: 'bpy.types.Object',
+        ae_obj: dict,
         data_path: str,
         data_index: int,
         prop_data,
@@ -222,7 +262,9 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         '''Imports a given property from the JSON file onto a given Blender object.
 
         Args:
+            slot_mgr (ActionSlotManager): Object for managing animation action slots.
             obj (bpy_struct): The object to import the property onto.
+            ae_obj (bpy_struct): The After Effects layer object that this property is part of.
             data_path (str): The destination data path of the property.
             data_index (int): The index into the destination data path, for multidimensional properties. -1 for single-dimension properties.
             prop_data: The JSON property data.
@@ -232,8 +274,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
             add (float, optional): Add this value to the property. Defaults to 0.
         '''
         if prop_data['isKeyframed']:
-            self.ensure_action_exists(obj)
-            fcurve = self.make_or_get_fcurve(obj.animation_data.action, data_path, data_index)
+            fcurve = slot_mgr.fcurve_for_data_path(obj, ae_obj, data_path, data_index)
             if prop_data['keyframesFormat'] == 'bezier':
                 self.import_bezier_keyframe_channel(
                     fcurve,
@@ -263,7 +304,9 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
 
     def import_baked_transform(
         self,
+        slot_mgr: ActionSlotManager,
         obj: 'bpy.types.Object',
+        ae_obj: dict,
         data,
         comp_framerate: float,
         desired_framerate: float,
@@ -276,18 +319,19 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         '''Import a baked transform (one 4x4 transform matrix per frame) onto a given Blender object.
 
         Args:
+            slot_mgr (ActionSlotManager): Object for managing animation action slots.
             obj (bpy_struct): The object to import the property onto.
+            ae_obj (bpy_struct): The After Effects layer object that this property is part of.
             data: The JSON transform data.
             comp_framerate (float): The comp's framerate.
             desired_framerate (float): The desired framerate.
             func ((Vector, Quaternion, Vector) -> (Vector, Quaternion, Vector), optional): Function to call on each keyframe.
         '''
-        self.ensure_action_exists(obj)
         obj.rotation_mode = 'QUATERNION'
 
-        loc_fcurves = [self.make_or_get_fcurve(obj.animation_data.action, 'location', index) for index in range(3)]
-        rot_fcurves = [self.make_or_get_fcurve(obj.animation_data.action, 'rotation_quaternion', index) for index in range(4)]
-        scale_fcurves = [self.make_or_get_fcurve(obj.animation_data.action, 'scale', index) for index in range(3)]
+        loc_fcurves = [slot_mgr.fcurve_for_data_path(obj, ae_obj, 'location', index) for index in range(3)]
+        rot_fcurves = [slot_mgr.fcurve_for_data_path(obj, ae_obj, 'rotation_quaternion', index) for index in range(4)]
+        scale_fcurves = [slot_mgr.fcurve_for_data_path(obj, ae_obj, 'scale', index) for index in range(3)]
 
         keyframes = data['keyframes']
         start_frame = data['startFrame']
@@ -329,7 +373,9 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
 
     def import_property_spatial(
         self,
+        slot_mgr: ActionSlotManager,
         obj: 'bpy.types.Object',
+        ae_obj: dict,
         data_path: str,
         prop_data,
         comp_framerate: float,
@@ -341,7 +387,9 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         '''Import a 3D spatial property.
 
         Args:
+            slot_mgr (ActionSlotManager): Object for managing animation action slots.
             obj (bpy_struct): The object to import the property onto.
+            ae_obj (bpy_struct): The After Effects layer object that this property is part of.
             data_path (str): The destination property's data path.
             prop_data: The JSON property data.
             comp_framerate (float): The comp's framerate.
@@ -353,7 +401,9 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         '''
         for i in range(3):
             self.import_property(
+                slot_mgr=slot_mgr,
                 obj=obj,
+                ae_obj=ae_obj,
                 data_path=data_path,
                 data_index=swizzle[i],
                 prop_data=prop_data['channels'][i],
@@ -378,6 +428,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
             self.report({'WARNING'}, warning)
             return {'CANCELLED'}
 
+        slot_mgr = ActionSlotManager()
         added_objects = []
         cameras: list[CameraLayer] = []
         camera_in_out_frames: list[int] = []
@@ -451,7 +502,9 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                     return loc, rot, scale
 
                 self.import_baked_transform(
+                    slot_mgr,
                     obj,
+                    layer,
                     layer['transform'],
                     comp_framerate=data['comp']['frameRate'],
                     desired_framerate=desired_framerate,
@@ -466,7 +519,9 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                     anchor_parent.empty_display_type = 'ARROWS'
                     added_objects.append(anchor_parent)
                     self.import_property_spatial(
+                        slot_mgr=slot_mgr,
                         obj=transform_target,
+                        ae_obj=layer,
                         data_path='location',
                         prop_data=layer['anchorPoint'],
                         comp_framerate=data['comp']['frameRate'],
@@ -479,7 +534,9 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
 
                 if 'scale' in layer:
                     self.import_property_spatial(
+                        slot_mgr=slot_mgr,
                         obj=transform_target,
+                        ae_obj=layer,
                         data_path='scale',
                         prop_data=layer['scale'],
                         comp_framerate=data['comp']['frameRate'],
@@ -504,7 +561,9 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                 for index, prop_name in enumerate(['rotationX', 'rotationY', 'rotationZ']):
                     if prop_name in layer:
                         self.import_property(
+                            slot_mgr=slot_mgr,
                             obj=transform_target,
+                            ae_obj=layer,
                             data_path='rotation_euler',
                             data_index=channel_swizzle[index],
                             prop_data=layer[prop_name]['channels'][0],
@@ -531,10 +590,9 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                                 raise ValueError('Orientation keyframes must be in "calculated" format')
 
                             orientation_parent.rotation_mode = 'QUATERNION'
-                            self.ensure_action_exists(orientation_parent)
                             num_keyframes = len(layer['orientation']['channels'][0]['keyframes'])
                             start_frame = layer['orientation']['channels'][0]['startFrame']
-                            rot_fcurves = [self.make_or_get_fcurve(orientation_parent.animation_data.action, 'rotation_quaternion', i) for i in range(4)]
+                            rot_fcurves = [slot_mgr.fcurve_for_data_path(orientation_parent, layer, 'rotation_quaternion', i) for i in range(4)]
                             for fcurve in rot_fcurves:
                                 fcurve.keyframe_points.add(num_keyframes)
                                 for i in range(num_keyframes):
@@ -576,7 +634,9 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
                     added_objects.append(point_of_interest)
 
                     self.import_property_spatial(
+                        slot_mgr=slot_mgr,
                         obj=point_of_interest,
+                        ae_obj=layer,
                         data_path='location',
                         prop_data=layer['pointOfInterest'],
                         comp_framerate=data['comp']['frameRate'],
@@ -604,7 +664,9 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
 
                 if 'position' in layer:
                     self.import_property_spatial(
+                        slot_mgr=slot_mgr,
                         obj=transform_target,
+                        ae_obj=layer,
                         data_path='location',
                         prop_data=layer['position'],
                         comp_framerate=data['comp']['frameRate'],
@@ -621,7 +683,9 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
             if layer['type'] == 'camera':
                 obj_data.sensor_fit = 'VERTICAL'
                 self.import_property(
+                    slot_mgr=slot_mgr,
                     obj=obj_data,
+                    ae_obj=layer,
                     data_path='lens',
                     data_index=-1,
                     prop_data=layer['zoom']['channels'][0],
@@ -674,10 +738,12 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         if self.adjust_frame_start_end:
             # Compensate for floating-point error
             # TODO: there should be a lot less floating-point error. ExtendScript is probably printing floats poorly.
+            # (Or maybe After Effects just uses floats instead of doubles like JS does)
             context.scene.frame_start = floor(data['comp']['workArea'][0] * desired_framerate + 1e-13)
             # After Effects' work area excludes the end point; Blender's includes it. Subtract 1 from the end.
             context.scene.frame_end = ceil(data['comp']['workArea'][1] * desired_framerate - 1e-13) - 1
 
+        # Import switching between camera layers as markers
         if self.cameras_to_markers:
             # Keep track of existing markers to avoid adding new ones in the same place
             existing_markers: dict[int, TimelineMarker] = dict()

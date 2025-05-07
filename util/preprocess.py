@@ -1,7 +1,7 @@
 import re
 from os import path
 
-incl_regex = re.compile('\/\/ ?@include *(\'(.+)\'|"(.+)")')
+incl_regex = re.compile('// ?@include *(\'(.+)\'|"(.+)")')
 
 def process_includes(file_path, root_file=False):
     srcdir = path.dirname(file_path)
@@ -19,5 +19,5 @@ def process_includes(file_path, root_file=False):
         return f'/*\n{license_contents}*/\n\n{contents}'
 
 
-with open('Export Composition Data to JSON.jsx', 'w', encoding='utf-8') as file:
-    file.write(process_includes('export-comp-from-ae/export-comp-from-ae.jsx', True))
+with open('Export Composition Data to JSON.jsx', 'wb') as file:
+    file.write(bytes(process_includes('export-comp-from-ae/export-comp-from-ae.jsx', True), 'UTF-8'))
