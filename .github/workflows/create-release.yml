@@ -9,35 +9,35 @@ on:
 
 jobs:
   release:
-  runs-on: ubuntu-latest
-  permissions:
-    contents: write
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
-  steps:
-  - name: Checkout
-    uses: actions/checkout@v4
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
 
-  - name: Install Blender
-    uses: awalsh128/cache-apt-pkgs-action@v1
-    with:
-      packages: blender
-      version: 1.0
+    - name: Install Blender
+      uses: awalsh128/cache-apt-pkgs-action@v1
+      with:
+        packages: blender
+        version: 1.0
 
-  - name: Create build directory
-    run: mkdir -p build
+    - name: Create build directory
+      run: mkdir -p build
 
-  - name: Build AE addon
-    run: python util/preprocess.py
+    - name: Build AE addon
+      run: python util/preprocess.py
 
-  - name: Build Blender addon
-    run: blender --command extension build --source-dir import-comp-to-blender --output-dir build
+    - name: Build Blender addon
+      run: blender --command extension build --source-dir import-comp-to-blender --output-dir build
 
-  - name: Display structure of downloaded files
-    run: ls -l
-    working-directory: ./build
+    - name: Display structure of downloaded files
+      run: ls -l
+      working-directory: ./build
 
-  - name: Create release
-    uses: ncipollo/release-action@v1
-    with:
-      artifacts: "./build/*"
-      draft: true
+    - name: Create release
+      uses: ncipollo/release-action@v1
+      with:
+        artifacts: "./build/*"
+        draft: true
