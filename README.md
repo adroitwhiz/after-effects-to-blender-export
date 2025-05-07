@@ -2,9 +2,11 @@
 
 This repo includes a script for After Effects, and add-on for Blender, that allows animated composition layer data to be exported from the former to the latter.
 
+Looking for the extension files to install? They're now on [the Releases page](https://github.com/adroitwhiz/after-effects-to-blender-export/releases).
+
 ## Installation / Usage (After Effects)
 
-To install the After Effects script, first [download it](https://github.com/adroitwhiz/after-effects-to-blender-export/raw/master/Export%20Composition%20Data%20to%20JSON.jsx) and then select it via File > Scripts > Install Script File...:
+To install the After Effects script, first [download it](https://github.com/adroitwhiz/after-effects-to-blender-export/releases) and then select it via File > Scripts > Install Script File...:
 
 ![AE step 1](docs/ae-step1.png)
 
@@ -49,7 +51,7 @@ For those properties with keyframes that cannot be directly imported and must be
 
 ## Installation / Usage (Blender)
 
-To install the Blender add-on, [download](https://github.com/adroitwhiz/after-effects-to-blender-export/raw/master/import-comp-to-blender.py), install, and then enable it via the add-on preferences:
+To install the Blender add-on, [download](https://github.com/adroitwhiz/after-effects-to-blender-export/releases), install, and then enable it via the add-on preferences:
 
 ![Blender step 1](docs/blender-step1.png)
 
