@@ -17,12 +17,6 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Install Blender
-      uses: awalsh128/cache-apt-pkgs-action@v1
-      with:
-        packages: blender
-        version: 1.0
-
     - name: Create build directory
       run: mkdir -p build
 
@@ -30,7 +24,7 @@ jobs:
       run: python util/preprocess.py
 
     - name: Build Blender addon
-      run: blender --command extension build --source-dir import-comp-to-blender --output-dir build
+      run: python util/build-blender.py
 
     - name: Display structure of downloaded files
       run: ls -l
