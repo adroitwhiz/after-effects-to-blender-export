@@ -1,0 +1,16 @@
+schema_version = "1.0.0"
+
+id = "after_effects_to_blender_import"
+version = "0.6.0"
+name = "Import After Effects Composition"
+tagline = "Import layers from an After Effects composition into Blender"
+maintainer = "adroitwhiz"
+type = "add-on"
+website = "https://github.com/adroitwhiz/after-effects-to-blender-export/"
+tags = ["Import-Export"]
+blender_version_min = "4.4.0"
+license = ["SPDX:GPL-3.0-or-later"]
+copyright = ["2020-2025 adroitwhiz"]
+
+[permissions]
+files = "Import .json files from disk"

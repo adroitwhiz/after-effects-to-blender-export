@@ -14,10 +14,10 @@ def process_includes(file_path, root_file=False):
         contents = incl_regex.sub(make_include, contents)
     if not root_file:
         return contents
-    with open('LICENSE', 'r', encoding='utf-8') as license:
+    with open('LICENSE_JS', 'r', encoding='utf-8') as license:
         license_contents = license.read()
         return f'/*\n{license_contents}*/\n\n{contents}'
 
 
-with open('Export Composition Data to JSON.jsx', 'wb') as file:
+with open('build/Export Composition Data to JSON.jsx', 'wb') as file:
     file.write(bytes(process_includes('export-comp-from-ae/export-comp-from-ae.jsx', True), 'UTF-8'))

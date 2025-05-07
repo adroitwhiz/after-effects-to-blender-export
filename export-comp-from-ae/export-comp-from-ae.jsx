@@ -81,7 +81,7 @@
                     alignment: 'fill',
                     plug: c.Group({
                         text: c.StaticText({
-                            text: 'Copyright © 2020-2024 adroitwhiz. All Rights Reserved.',
+                            text: 'Copyright © 2020-2025 adroitwhiz. All Rights Reserved.',
                             alignment: ['fill', 'center']
                         }),
                         link: c.Button({
