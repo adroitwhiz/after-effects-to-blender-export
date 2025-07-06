@@ -1,23 +1,14 @@
 import json
 import bpy
 from bpy.types import Action, FCurve, Camera, TimelineMarker, Object
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, Protocol
 from bpy_extras.io_utils import ImportHelper
 from mathutils import Euler, Matrix, Quaternion, Vector
 from math import radians, pi, floor, ceil, isclose
 from fractions import Fraction
 from itertools import chain
 from dataclasses import dataclass
-
-MIN_VERSION = (4, 4, 0)
-
-# Blender will warn users if they enable this addon in an older version of Blender than is officially supported,
-# but will not prevent them from using it. This warning is apparently not visible enough, and Blender will throw an
-# obscure error when those users attempt to actually use the add-on. Instead, prevent the add-on from being enabled in
-# versions of Blender too old to allow it to function.
-if bpy.app.version < MIN_VERSION:
-    min_blender_version_string = '.'.join(str(ver) for ver in MIN_VERSION)
-    raise Exception(f"This add-on is incompatible with Blender versions older than {min_blender_version_string}. Please update to a newer version of Blender.")
+from abc import abstractmethod
 
 @dataclass
 class CameraLayer:
@@ -25,6 +16,11 @@ class CameraLayer:
     camera: Object
     inFrame: int
     outFrame: int
+
+class IActionSlotManager(Protocol):
+    @abstractmethod
+    def fcurve_for_data_path(self, dst_obj: 'bpy.types.Object', ae_obj: dict, data_path: str, index = -1) -> 'FCurve':
+        raise NotImplementedError
 
 '''
 Creates and maps imported AE objects to animation action slots. Some AE objects may be imported as nested sets of
@@ -92,7 +88,45 @@ class ActionSlotManager:
 
         return fc
 
+'''
+Class that's compatible with ActionSlotManager but made for pre-4.4 versions of Blender.
+'''
+class LegacyActionSlotManager:
+    actions_by_ae_object: dict[str, Action]
+    def __init__(self):
+        self.actions_by_ae_object = dict()
 
+    def fcurve_for_data_path(self, dst_obj: 'bpy.types.Object', ae_obj: dict, data_path: str, index = -1) -> 'FCurve':
+        '''
+        Returns an F-curve for a given data path on the specified Blender object, which corresponds to a certain After
+        Effects layer. Creates one if it does not exist.
+
+        Args:
+            dst_obj: The Blender object to get or create the F-curve on.
+
+            ae_obj: The After Effects layer that this Blender object corresponds to. This is ignored for the
+            LegacyActionSlotManager.
+
+            data_path: The Blender object's datapath which the F-curve controls.
+
+            index (int, optional): The index of the property, for multidimensional properties like location, rotation,
+            and scale.
+        '''
+
+        if dst_obj.animation_data is None:
+            dst_obj.animation_data_create()
+        if dst_obj.animation_data.action is None:
+            dst_obj.animation_data.action = bpy.data.actions.new(dst_obj.name + 'Action')
+
+        action = dst_obj.animation_data.action
+        for fc in action.fcurves:
+            if (fc.data_path != data_path):
+                continue
+            if index<0 or index==fc.array_index:
+                return fc
+
+        # the action didn't have the fcurve we needed, yet
+        return action.fcurves.new(data_path, index=index)
 
 class ImportAEComp(bpy.types.Operator, ImportHelper):
     """Import layers from an After Effects composition, as exported by the corresponding AE script"""
@@ -240,7 +274,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
 
     def import_property(
         self,
-        slot_mgr: ActionSlotManager,
+        slot_mgr: IActionSlotManager,
         obj: 'bpy.types.Object',
         ae_obj: dict,
         data_path: str,
@@ -253,7 +287,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         '''Imports a given property from the JSON file onto a given Blender object.
 
         Args:
-            slot_mgr (ActionSlotManager): Object for managing animation action slots.
+            slot_mgr (IActionSlotManager): Object for managing animation action slots.
             obj (bpy_struct): The object to import the property onto.
             ae_obj (bpy_struct): The After Effects layer object that this property is part of.
             data_path (str): The destination data path of the property.
@@ -295,7 +329,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
 
     def import_baked_transform(
         self,
-        slot_mgr: ActionSlotManager,
+        slot_mgr: IActionSlotManager,
         obj: 'bpy.types.Object',
         ae_obj: dict,
         data,
@@ -310,7 +344,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         '''Import a baked transform (one 4x4 transform matrix per frame) onto a given Blender object.
 
         Args:
-            slot_mgr (ActionSlotManager): Object for managing animation action slots.
+            slot_mgr (IActionSlotManager): Object for managing animation action slots.
             obj (bpy_struct): The object to import the property onto.
             ae_obj (bpy_struct): The After Effects layer object that this property is part of.
             data: The JSON transform data.
@@ -364,7 +398,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
 
     def import_property_spatial(
         self,
-        slot_mgr: ActionSlotManager,
+        slot_mgr: IActionSlotManager,
         obj: 'bpy.types.Object',
         ae_obj: dict,
         data_path: str,
@@ -378,7 +412,7 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         '''Import a 3D spatial property.
 
         Args:
-            slot_mgr (ActionSlotManager): Object for managing animation action slots.
+            slot_mgr (IActionSlotManager): Object for managing animation action slots.
             obj (bpy_struct): The object to import the property onto.
             ae_obj (bpy_struct): The After Effects layer object that this property is part of.
             data_path (str): The destination property's data path.
@@ -421,7 +455,10 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
             self.report({'WARNING'}, warning)
             return {'CANCELLED'}
 
-        slot_mgr = ActionSlotManager()
+        if hasattr(bpy.types, 'ActionSlot'):
+            slot_mgr = ActionSlotManager()
+        else:
+            slot_mgr = LegacyActionSlotManager()
         added_objects = []
         cameras: list[CameraLayer] = []
         camera_in_out_frames: list[int] = []
