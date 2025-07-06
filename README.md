@@ -55,6 +55,8 @@ To install the Blender add-on, [download](https://github.com/adroitwhiz/after-ef
 
 ![Blender step 1](docs/blender-step1.png)
 
+**DO NOT** download just the `__init.py__` file, or try to extract any files from the .zip! When selecting the addon to install from disk in Blender, choose the *full* .zip file. Otherwise, it will not work.
+
 To import camera data exported from After Effects, navigate to File > Import > After Effects composition data, converted (.json):
 
 ![Blender step 2](docs/blender-step2.png)
