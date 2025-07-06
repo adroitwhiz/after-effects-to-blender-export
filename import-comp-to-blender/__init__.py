@@ -410,9 +410,11 @@ class ImportAEComp(bpy.types.Operator, ImportHelper):
         with open(self.filepath) as f:
             data = json.load(f)
 
-        fileVersion = data.get('version', 0)
+        fileVersion = data.get('version')
         if fileVersion != 3:
-            if fileVersion > 3:
+            if fileVersion is None:
+                warning = 'This isn\'t a valid exported file in the correct format.'
+            elif fileVersion > 3:
                 warning = 'This file is too new. Update this add-on.'
             else:
                 warning = 'This file is too old. Re-export it using a newer version of this add-on.'
