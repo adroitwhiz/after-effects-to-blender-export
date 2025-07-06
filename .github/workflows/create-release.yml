@@ -21,7 +21,7 @@ jobs:
       run: mkdir -p build
 
     - name: Build AE addon
-      run: python util/preprocess.py
+      run: python util/build-ae.py
 
     - name: Build Blender addon
       run: python util/build-blender.py

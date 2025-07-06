@@ -2,7 +2,7 @@
 
 This repo includes a script for After Effects, and add-on for Blender, that allows animated composition layer data to be exported from the former to the latter.
 
-Looking for the extension files to install? They're now on [the Releases page](https://github.com/adroitwhiz/after-effects-to-blender-export/releases).
+**Looking for the extension files to install? They're now on [the Releases page](https://github.com/adroitwhiz/after-effects-to-blender-export/releases).**
 
 ## Installation / Usage (After Effects)
 
@@ -97,15 +97,15 @@ Once the desired options have been set, navigate to the .json file exported via 
 
 ## Development
 
-If a script file depends on other script files, After Effects' "Install Script File" option will not work. To get around this, I've created a preprocessor script that lives in `util/preprocess.py`. To use it, simply run it via Python:
+If a script file depends on other script files, After Effects' "Install Script File" option will not work. To get around this, I've created a preprocessor script that lives in `util/build-ae.py`. To use it, simply run it via Python:
 
 ```bash
-python3 util/preprocess.py
+python3 util/build-ae.py
 ```
 
 Or if you're on Windows:
 ```powershell
-py -3 util\preprocess.py
+py -3 util\build-ae.py
 ```
 
 This will generate `Export Composition Data to JSON.jsx`.

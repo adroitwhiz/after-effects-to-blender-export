@@ -1,7 +1,11 @@
+'''
+Process all `@include` comments in the After Effects script, bundling everything into a single file.
+'''
+
 import re
 from os import path
 
-incl_regex = re.compile('// ?@include *(\'(.+)\'|"(.+)")')
+incl_regex = re.compile('// ?@include *(\'([^\']+)\'|"([^"]+)")')
 
 def process_includes(file_path, root_file=False):
     srcdir = path.dirname(file_path)
