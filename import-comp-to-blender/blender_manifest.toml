@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "after_effects_to_blender_import"
-version = "0.6.1"
+version = "0.6.2"
 name = "Import After Effects Composition"
 tagline = "Import layers from an After Effects composition into Blender"
 maintainer = "adroitwhiz"
